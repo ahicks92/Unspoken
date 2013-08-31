@@ -1,0 +1,1 @@
+from nvdaaddonupdater import *

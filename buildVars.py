@@ -33,7 +33,8 @@ import os.path
 # You can use glob expressions here, they will be expanded.
 pythonSources = [
 "addon/globalPlugins/unspoken/*.py",
-"addon/globalPlugins/unspoken/camlorn_audio/*.py"]
+"addon/globalPlugins/unspoken/camlorn_audio/*.py",
+"addon/globalPlugins/unspoken/nvdaaddonupdater/*.py"]
 
 # Files that contain strings for translation. Usually your python sources
 i18nSources = pythonSources + ["buildVars.py", "docHandler.py"]
