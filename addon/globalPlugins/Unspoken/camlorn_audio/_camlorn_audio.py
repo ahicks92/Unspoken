@@ -17,17 +17,12 @@ AL_LINEAR_DISTANCE_CLAMPED = 0xD004
 AL_EXPONENT_DISTANCE = 0xD005
 AL_EXPONENT_DISTANCE_CLAMPED = 0xD006
 
+#initialize camlorn_audio.
+#the parameter order is hrtf, channels, frequency, backendOrder, periodSize, periods.
+CA_initCamlornAudio = CFUNCTYPE(c_int, c_int, c_char_p, c_uint, c_char_p, c_uint, c_uint)(('CA_initCamlornAudio', ca_module))
+
+
 #the constructors
-
-CA_createContextWithDefaultDevice = CFUNCTYPE(c_void_p)(('CA_createContextWithDefaultDevice', ca_module))
-
-CA_createContextWithDeviceName = CFUNCTYPE(c_void_p, c_char_p)(('CA_createContextWithDeviceName', ca_module))
-
-CA_createContextWithNameAndHints = CFUNCTYPE(c_void_p, c_char_p, POINTER(c_int))(('CA_createContextWithNameAndHints', ca_module))
-
-CA_setPreferredConfigFile = CFUNCTYPE(c_char_p)(('CA_setPreferredConfigFile', ca_module))
-
-CA_getLoadedConfigFile = CFUNCTYPE(c_char_p)(('CA_getLoadedConfigFile', ca_module))
 
 CA_newSound3d = CFUNCTYPE(c_void_p)(('CA_newSound3d', ca_module))
 
@@ -49,9 +44,18 @@ CA_newViewpoint = CFUNCTYPE(c_void_p)(('CA_newViewpoint', ca_module))
 #frees any object returned by any camlorn_audio constructor.
 CA_free = CFUNCTYPE(None, c_void_p)(('CA_free', ca_module))
 
+#Error callbacks and handling
+CA_ErrorCallbackFunction = CFUNCTYPE(c_int, c_char_p, c_int, c_int, c_char_p, c_int)
+
+CA_setThreadLocalErrorCallback = CFUNCTYPE(None, CA_ErrorCallbackFunction)(('CA_setThreadLocalErrorCallback', ca_module))
+
+CA_setGlobalErrorCallback = CFUNCTYPE(None, CA_ErrorCallbackFunction)(('CA_setGlobalErrorCallback', ca_module))
+
 # the general cases, property getters and setters.
 CA_Playable_play = CFUNCTYPE(c_int, c_void_p)(('CA_Playable_play', ca_module))
 CA_Playable_pause = CFUNCTYPE(c_int, c_void_p)(('CA_Playable_pause', ca_module))
+CA_Playable_setVolume = CFUNCTYPE(c_int, c_void_p, c_float)(('CA_Playable_setVolume', ca_module))
+
 CA_Stoppable_stop = CFUNCTYPE(c_int, c_void_p)(('CA_Stoppable_stop', ca_module))
 
 CA_Moveable_setPosition = CFUNCTYPE(c_int, c_void_p, c_float, c_float, c_float)(('CA_Moveable_setPosition', ca_module))

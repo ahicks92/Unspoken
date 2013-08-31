@@ -10,7 +10,6 @@ import config
 import speech
 
 from camlorn_audio import *
-import camlorn_audio._camlorn_audio # Temporarily needed since conf file can't be set with Context.
 
 
 # Constants
@@ -21,7 +20,6 @@ AUDIO_DEPTH = 5.0 # Distance of listener from display.
 
 UNSPOKEN_ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
 
-CAMLORN_AUDIO_CONFIG_PATH = os.path.join(UNSPOKEN_ROOT_PATH, r"camlorn_audio\alsoft.ini")
 
 # Sounds
 
@@ -78,10 +76,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def __init__(self, *args, **kwargs):
 		globalPluginHandler.GlobalPlugin.__init__(self, *args, **kwargs)
 
-		camlorn_audio._camlorn_audio.CA_setPreferredConfigFile(CAMLORN_AUDIO_CONFIG_PATH)
-
-		#self._context = Context(device_name=config.conf['speech']['outputDevice'])
-		self._context = Context()
+		init_camlorn_audio()
 
 		# Load sounds.
 		for key in sound_files:
