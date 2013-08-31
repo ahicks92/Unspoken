@@ -7,4 +7,9 @@ addon/doc/en/
 *.pot
 *.pyc
 *.nvda-addon
+.*.zip
+*.wav
+*.ogg
+*.zip
+*.dll
 .sconsign.dblite
