@@ -90,8 +90,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._room_reverb.set_gain(1)
 		self._room_reverb.set_reflections_gain(0.4)
 		self._room_reverb.set_late_reverb_gain(0)
-		for sound in sounds:
-			sounds[sound].set_effect_for_slot(self._room_reverb, 1)
+#		for sound in sounds:
+#			sounds[sound].set_effect_for_slot(self._room_reverb, 1)
 
 		# Hook to keep NVDA from announcing roles.
 		self._NVDA_getSpeechTextForProperties = speech.getSpeechTextForProperties
