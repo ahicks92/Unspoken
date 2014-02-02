@@ -3,7 +3,6 @@
 
 import os
 import sys
-
 import globalPluginHandler
 import NVDAObjects
 import config
@@ -80,8 +79,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 		# Load sounds.
 		for key in sound_files:
+			print "Attempting to load "+key
 			sounds[key] = Sound3D(os.path.join(UNSPOKEN_SOUNDS_PATH, sound_files[key]))
 			sounds[key].set_rolloff_factor(0)
+			if sounds[key].get_length() <= 0:
+				print "Failed to load", key, "with length", sounds[key].get_length()
+			else:
+				print "Loaded sound for "+key
 
 		# Setup room ambience
 		self._room_reverb = Reverb()
@@ -112,6 +116,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		global AUDIO_WIDTH, AUDIO_DEPTH
 		role_label = NVDAObjects.controlTypes.roleLabels[obj.role]
 		if sounds.has_key(role_label):
+
 			# Get coordinate bounds of desktop.
 			desktop = NVDAObjects.api.getDesktopObject()
 			desktop_max_x = desktop.location[2]

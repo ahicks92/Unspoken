@@ -10,10 +10,13 @@ import os
 #a bunch of exceptions.
 class CamlornAudioError(Exception):
 	"""Base camlorn_audio exception."""
-	pass
 
 	def __init__(self, code = 0):
 		self.code = code
+		self.message = _camlorn_audio.CA_getLastErrorMessage()
+
+	def __str__(self):
+		return "Error code: " + str(self.code) + " And message: " + self.message
 
 class ObjectCreationError(CamlornAudioError):
 	"""Thrown when an object couldn't be created."""
@@ -31,11 +34,16 @@ class ArgumentOutOfRangeError(CamlornAudioError):
 	"""Thrown when an argument to a camlorn_audio function is out of range."""
 	pass
 
+class InternalFileError(CamlornAudioError):
+	"""Thrown when an internal file error has happened.  If you see this, it's a bug."""
+	pass
+
 #this mapping holds the code->class information for those errors which have a dedicated class.
 _error_code_to_class = collections.defaultdict(lambda: CamlornAudioError,
 {
 _camlorn_audio.UNSUPPORTED_CHANNEL_COUNT_ERROR: UnsupportedChannelCountError,
 _camlorn_audio.ARGUMENT_OUT_OF_RANGE_ERROR: ArgumentOutOfRangeError,
+_camlorn_audio.INTERNAL_FILE_ERROR : InternalFileError,
 })
 
 def camcall(function, *args):

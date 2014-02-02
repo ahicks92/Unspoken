@@ -1,22 +1,14 @@
 from camlorn_audio import *
 from glob import *
+import random
+import pdb
 
 init_camlorn_audio()
 
+list = glob('*.wav')
+random.shuffle(list)
 x = dict()
-for i in glob('*.wav'):
+for i in list:
  x[i] = Sound3D(i)
-
-for i, s in x.iteritems():
- print i
- s.play()
- raw_input()
-
-x2 = dict()
-for i in glob('*.wav'):
- x2[i] = Sound3D(i)
-
-for i, s in x2.iteritems():
- print i
- s.play()
- raw_input()
+ if x[i].get_length() <= 0:
+  ptb.set_trace()
