@@ -14,9 +14,12 @@ class CamlornAudioError(Exception):
 	def __init__(self, code = 0):
 		self.code = code
 		self.message = _camlorn_audio.CA_getLastErrorMessage()
+		self.function = _camlorn_audio.CA_getLastErrorFunction()
+		self.line = _camlorn_audio.CA_getLastErrorLine()
+		self.file = _camlorn_audio.CA_getLastErrorFile()
 
 	def __str__(self):
-		return "Error code: " + str(self.code) + " And message: " + self.message
+		return "Error code: " + str(self.code) + " And message: " + self.message + " in function " + str(self.function) + " (" +self.file + "," + str(self.line) + ")"
 
 class ObjectCreationError(CamlornAudioError):
 	"""Thrown when an object couldn't be created."""

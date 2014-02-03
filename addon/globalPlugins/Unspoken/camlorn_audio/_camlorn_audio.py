@@ -33,6 +33,9 @@ INTERNAL_FILE_ERROR = 9
 
 CA_getLastErrorCode = CFUNCTYPE(c_char_p)(('CA_getLastErrorCode', ca_module))
 CA_getLastErrorMessage = CFUNCTYPE(c_char_p)(('CA_getLastErrorMessage', ca_module))
+CA_getLastErrorLine = CFUNCTYPE(c_int)(('CA_getLastErrorLine', ca_module))
+CA_getLastErrorFile = CFUNCTYPE(c_char_p)(('CA_getLastErrorFile', ca_module))
+CA_getLastErrorFunction = CFUNCTYPE(c_char_p)(('CA_getLastErrorFunction', ca_module))
 
 #initialize camlorn_audio.
 #the parameter order is hrtf, channels, frequency, backendOrder.
