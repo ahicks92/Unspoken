@@ -7,7 +7,7 @@ import globalPluginHandler
 import NVDAObjects
 import config
 import speech
-
+import controlTypes
 from camlorn_audio import *
 
 
@@ -26,46 +26,46 @@ UNSPOKEN_SOUNDS_PATH = os.path.join(UNSPOKEN_ROOT_PATH, "sounds")
 
 # Associate object roles to sounds.
 sound_files={
-"check box": "checkbox.wav",
-"radio button": "radiobutton.wav",
-"text": "editabletext.wav",
-"edit": "editabletext.wav",
-"button": "button.wav",
-"menu bar": "menuitem.wav",
-"menu item": "menuitem.wav",
-"menu": "menuitem.wav",
-"combo box": "combobox.wav",
-"list item": "listitem.wav",
-"graphic": "icon.wav",
-"link": "link.wav",
-"tree view item": "treeviewitem.wav",
-"tab": "tab.wav",
-"tab control": "tab.wav",
-"slider": "slider.wav",
-"drop down button": "combobox.wav",
-"clock": "clock.wav",
-"animation": "icon.wav",
-"icon": "icon.wav",
-"image map": "icon.wav",
-"radio menu item": "radiobutton.wav",
-"rich edit": "editabletext.wav",
-"shape": "icon.wav",
-"tear off menu": "menuitem.wav",
-"toggle button": "checkbox.wav",
-"chart": "icon.wav",
-"diagram": "icon.wav",
-"dial": "slider.wav",
-"drop list": "combobox.wav",
-"menu button": "button.wav",
-"drop down button grid": "button.wav",
-"hot key field": "editabletext.wav",
-"indicator": "icon.wav",
-"spin button": "slider.wav",
-"tree view button": "button.wav",
-"desktop icon": "icon.wav",
-"password edit": "editabletext.wav",
-"check menu item": "checkbox.wav",
-"split button": "splitbutton.wav",
+controlTypes.ROLE_CHECKBOX : "checkbox.wav",
+controlTypes.ROLE_RADIOBUTTON : "radiobutton.wav",
+controlTypes.ROLE_STATICTEXT : "editabletext.wav",
+controlTypes.ROLE_EDITABLETEXT : "editabletext.wav",
+controlTypes.ROLE_BUTTON : "button.wav",
+controlTypes.ROLE_MENUBAR : "menuitem.wav",
+controlTypes.ROLE_MENUITEM : "menuitem.wav",
+controlTypes.ROLE_MENU : "menuitem.wav",
+controlTypes.ROLE_COMBOBOX : "combobox.wav",
+controlTypes.ROLE_LISTITEM : "listitem.wav",
+controlTypes.ROLE_GRAPHIC : "icon.wav",
+controlTypes.ROLE_LINK : "link.wav",
+controlTypes.ROLE_TREEVIEWITEM : "treeviewitem.wav",
+controlTypes.ROLE_TAB : "tab.wav",
+controlTypes.ROLE_TABCONTROL : "tab.wav",
+controlTypes.ROLE_SLIDER : "slider.wav",
+controlTypes.ROLE_DROPDOWNBUTTON : "combobox.wav",
+controlTypes.ROLE_CLOCK: "clock.wav",
+controlTypes.ROLE_ANIMATION : "icon.wav",
+controlTypes.ROLE_ICON : "icon.wav",
+controlTypes.ROLE_IMAGEMAP : "icon.wav",
+controlTypes.ROLE_RADIOMENUITEM : "radiobutton.wav",
+controlTypes.ROLE_RICHEDIT : "editabletext.wav",
+controlTypes.ROLE_SHAPE : "icon.wav",
+controlTypes.ROLE_TEAROFFMENU : "menuitem.wav",
+controlTypes.ROLE_TOGGLEBUTTON : "checkbox.wav",
+controlTypes.ROLE_CHART : "icon.wav",
+controlTypes.ROLE_DIAGRAM : "icon.wav",
+controlTypes.ROLE_DIAL : "slider.wav",
+controlTypes.ROLE_DROPLIST : "combobox.wav",
+controlTypes.ROLE_MENUBUTTON : "button.wav",
+controlTypes.ROLE_DROPDOWNBUTTONGRID : "button.wav",
+controlTypes.ROLE_HOTKEYFIELD : "editabletext.wav",
+controlTypes.ROLE_INDICATOR : "icon.wav",
+controlTypes.ROLE_SPINBUTTON : "slider.wav",
+controlTypes.ROLE_TREEVIEWBUTTON: "button.wav",
+controlTypes.ROLE_DESKTOPICON : "icon.wav",
+controlTypes.ROLE_PASSWORDEDIT : "editabletext.wav",
+controlTypes.ROLE_CHECKMENUITEM : "checkbox.wav",
+controlTypes.ROLE_SPLITBUTTON : "splitbutton.wav",
 }
 
 sounds = dict() # For holding instances in RAM.
@@ -79,13 +79,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 		# Load sounds.
 		for key in sound_files:
-			print "Attempting to load "+key
+			print "Attempting to load "+sound_files[key]
 			sounds[key] = Sound3D(os.path.join(UNSPOKEN_SOUNDS_PATH, sound_files[key]))
 			sounds[key].set_rolloff_factor(0)
 			if sounds[key].get_length() <= 0:
 				print "Failed to load", key, "with length", sounds[key].get_length()
 			else:
-				print "Loaded sound for "+key
+				print "Loaded sound "+sound_files[key]
 
 		# Setup room ambience
 		self._room_reverb = Reverb()
@@ -107,16 +107,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _hook_getSpeechTextForProperties(self, reason=NVDAObjects.controlTypes.REASON_QUERY, *args, **kwargs):
 		role = kwargs.get('role', None)
 		if role:
-			role_label = NVDAObjects.controlTypes.roleLabels[role]
-			if 'role' in kwargs and role_label in sounds:
+			if 'role' in kwargs and role in sounds:
 				del kwargs['role']
 		return self._NVDA_getSpeechTextForProperties(reason, *args, **kwargs)
 
 	def play_object(self, obj):
 		global AUDIO_WIDTH, AUDIO_DEPTH
-		role_label = NVDAObjects.controlTypes.roleLabels[obj.role]
-		if sounds.has_key(role_label):
-
+		role = obj.role
+		if sounds.has_key(role):
 			# Get coordinate bounds of desktop.
 			desktop = NVDAObjects.api.getDesktopObject()
 			desktop_max_x = desktop.location[2]
@@ -135,8 +133,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			position_x = (obj_x / desktop_max_x) * (AUDIO_WIDTH * 2) - AUDIO_WIDTH
 			position_y = (obj_y / desktop_max_y) * (desktop_aspect * AUDIO_WIDTH * 2) - (desktop_aspect * AUDIO_WIDTH)
 			position_y *= -1
-			sounds[role_label].set_position(position_x, position_y, AUDIO_DEPTH * -1)
-			sounds[role_label].play()
+			sounds[role].set_position(position_x, position_y, AUDIO_DEPTH * -1)
+			sounds[role].play()
 
 	def event_becomeNavigatorObject(self, obj, nextHandler):
 		self.play_object(obj)
