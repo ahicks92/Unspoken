@@ -14,7 +14,7 @@ from camlorn_audio import *
 # Constants
 
 # Dimensions of the audio display
-AUDIO_WIDTH = 24.0 # Width of the audio display.
+AUDIO_WIDTH = 10.0 # Width of the audio display.
 AUDIO_DEPTH = 5.0 # Distance of listener from display.
 
 UNSPOKEN_ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
