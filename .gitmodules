@@ -1,0 +1,3 @@
+[submodule "camlorn_audio"]
+	path = camlorn_audio
+	url = git@github.com:camlorn/camlorn_audio.git
