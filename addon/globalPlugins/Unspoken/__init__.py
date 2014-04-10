@@ -140,6 +140,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self.play_object(obj)
 		nextHandler()
 
+	def event_gainFocus(self, obj, nextHandler):
+		self.play_object(obj)
+		nextHandler()
+
 	def event_mouseMove(self, obj, nextHandler, x, y):
 		if obj != self._previous_mouse_object:
 			self._previous_mouse_object = obj
