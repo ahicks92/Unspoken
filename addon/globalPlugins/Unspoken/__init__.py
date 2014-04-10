@@ -9,6 +9,7 @@ import config
 import speech
 import controlTypes
 from camlorn_audio import *
+import time
 
 
 # Constants
@@ -102,7 +103,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		speech.getSpeechTextForProperties = self._hook_getSpeechTextForProperties
 
 		self._previous_mouse_object = None
-
+		self._last_played_object = None
+		self._last_played_time = 0
 
 	def _hook_getSpeechTextForProperties(self, reason=NVDAObjects.controlTypes.REASON_QUERY, *args, **kwargs):
 		role = kwargs.get('role', None)
@@ -113,6 +115,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def play_object(self, obj):
 		global AUDIO_WIDTH, AUDIO_DEPTH
+		curtime = time.time()
+		if curtime-self._last_played_time < 0.1 and obj is self._last_played_object:
+			return
+		self._last_played_object = obj
+		self._last_played_time = curtime
 		role = obj.role
 		if sounds.has_key(role):
 			# Get coordinate bounds of desktop.
