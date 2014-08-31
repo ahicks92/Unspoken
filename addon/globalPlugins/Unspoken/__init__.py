@@ -25,6 +25,7 @@ dll_hack.append(ctypes.cdll.LoadLibrary(os.path.join(libaudioverse_directory, 'l
 from . import enum
 sys.modules['enum'] = enum
 import libaudioverse
+from . import mixer
 
 UNSPOKEN_ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
 
@@ -87,11 +88,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def __init__(self, *args, **kwargs):
 		globalPluginHandler.GlobalPlugin.__init__(self, *args, **kwargs)
-		self.simulation = libaudioverse.Simulation(device_index = -1)
+		self.simulation = libaudioverse.Simulation(device_index = None, block_size = 900)
 		self.make_sound_objects()
 		self.hrtf_panner = libaudioverse.HrtfObject(self.simulation, os.path.join(UNSPOKEN_ROOT_PATH, 'mit.hrtf'))
 		self.hrtf_panner.should_crossfade = False
 		self.simulation.output_object = self.hrtf_panner
+		self.mixer = mixer.Mixer(self.simulation, 1)
 		# Hook to keep NVDA from announcing roles.
 		self._NVDA_getSpeechTextForProperties = speech.getSpeechTextForProperties
 		speech.getSpeechTextForProperties = self._hook_getSpeechTextForProperties
