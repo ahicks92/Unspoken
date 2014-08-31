@@ -90,7 +90,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self.simulation = libaudioverse.Simulation(device_index = -1)
 		self.make_sound_objects()
 		self.hrtf_panner = libaudioverse.HrtfObject(self.simulation, os.path.join(UNSPOKEN_ROOT_PATH, 'mit.hrtf'))
-		self.hrtf_panner.allow_crossfade = False
+		self.hrtf_panner.should_crossfade = False
 		self.simulation.output_object = self.hrtf_panner
 		# Hook to keep NVDA from announcing roles.
 		self._NVDA_getSpeechTextForProperties = speech.getSpeechTextForProperties
@@ -152,6 +152,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self.hrtf_panner.azimuth = angle_x
 			self.hrtf_panner.elevation = angle_y
 			sounds[role].position = 0
+			self.hrtf_panner.reset()
 			#Turn it back on.
 			self.hrtf_panner.suspended = False
 

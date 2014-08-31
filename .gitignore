@@ -11,4 +11,4 @@ addon/doc/en/
 *.zip
 *.dll
 .sconsign.dblite
-addon/globalPlugins/Unspoken/libaudioverse/
+addon/globalPlugins/Unspoken/libaudioverse/*
