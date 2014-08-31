@@ -347,6 +347,15 @@ class HrtfObject(GenericObject):
 		_lav.object_set_float_property(self.handle, _libaudioverse.Lav_PANNER_ELEVATION, float(val))
 
 
+	@property
+	def should_crossfade(self):
+		return bool(_lav.object_get_int_property(self.handle, _libaudioverse.Lav_PANNER_SHOULD_CROSSFADE))
+
+	@should_crossfade.setter
+	def should_crossfade(self, val):
+		_lav.object_set_int_property(self.handle, _libaudioverse.Lav_PANNER_SHOULD_CROSSFADE, int(bool(val)))
+
+
 class FileObject(GenericObject):
 	def __init__(self, sim, path):
 		super(FileObject, self).__init__(_lav.create_file_object(sim, path), sim)

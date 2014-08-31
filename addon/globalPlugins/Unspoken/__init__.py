@@ -90,6 +90,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self.simulation = libaudioverse.Simulation(device_index = -1)
 		self.make_sound_objects()
 		self.hrtf_panner = libaudioverse.HrtfObject(self.simulation, os.path.join(UNSPOKEN_ROOT_PATH, 'mit.hrtf'))
+		self.hrtf_panner.allow_crossfade = False
 		self.simulation.output_object = self.hrtf_panner
 		# Hook to keep NVDA from announcing roles.
 		self._NVDA_getSpeechTextForProperties = speech.getSpeechTextForProperties
@@ -98,8 +99,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._last_played_object = None
 		self._last_played_time = 0
 		#these are in degrees.
-		self._display_width = 160.0
-		self._display_height = 40.0
+		self._display_width = 180.0
+		self._display_height_min = -40.0
+		self._display_height_magnitude = 80.0
 
 	def make_sound_objects(self):
 		"""Makes sound objects from libaudioverse."""
@@ -138,7 +140,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				obj_y = desktop_max_y / 2.0
 			# Scale object position to audio display.
 			angle_x = ((obj_x-desktop_max_x/2.0)/desktop_max_x)*self._display_width
-			angle_y = (((desktop_max_y/2.0)-obj_y)/desktop_max_y)*self._display_height
+			#angle_y is a bit more involved.
+			percent = (desktop_max_y-obj_y)/desktop_max_y
+			angle_y = self._display_height_magnitude*percent+self._display_height_min
 			#clamp these to Libaudioverse's internal ranges.
 			angle_x = clamp(angle_x, -90.0, 90.0)
 			angle_y = clamp(angle_y, -90.0, 90.0)
