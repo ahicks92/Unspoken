@@ -31,8 +31,13 @@ class Mixer(object):
 			self.queue.put(block_string, block = True)
 
 	def player_func(self):
+		prev_device = config.conf["speech"]["outputDevice"]
 		zero_string = struct.pack("882h", *[0]*882) #10 ms of silence.
 		while True:
+			current_device = config.conf["speech"]["outputDevice"]
+			if prev_device != current_device:
+				self.player = nvwave.WavePlayer(channels = 2, samplesPerSec = 44100, bitsPerSample = 16, outputDevice=config.conf["speech"]["outputDevice"])
+			prev_device = current_device
 			try:
 				send_string = self.queue.get(block = True, timeout = 0.01)
 				self.player.feed(send_string)
