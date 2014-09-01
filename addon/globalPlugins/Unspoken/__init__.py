@@ -103,7 +103,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		#these are in degrees.
 		self._display_width = 180.0
 		self._display_height_min = -40.0
-		self._display_height_magnitude = 80.0
+		self._display_height_magnitude = 50.0
 
 	def make_sound_objects(self):
 		"""Makes sound objects from libaudioverse."""
