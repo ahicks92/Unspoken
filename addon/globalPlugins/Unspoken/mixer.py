@@ -23,7 +23,7 @@ class Mixer(object):
 
 	def feeder_func(self):
 		while True:
-			block = self.sim.get_block()
+			block = self.sim.get_block(2)
 			max_sample = (1<<15)-1
 			for i, j in enumerate(block):
 				block[i] = j*max_sample

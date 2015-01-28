@@ -25,6 +25,7 @@ dll_hack.append(ctypes.cdll.LoadLibrary(os.path.join(libaudioverse_directory, 'l
 from . import enum
 sys.modules['enum'] = enum
 import libaudioverse
+libaudioverse.initialize()
 from . import mixer
 
 UNSPOKEN_ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
@@ -87,13 +88,12 @@ def clamp(my_value, min_value, max_value):
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def __init__(self, *args, **kwargs):
-		globalPluginHandler.GlobalPlugin.__init__(self, *args, **kwargs)
+		super(GlobalPlugin, self).__init__(*args, **kwargs)
 		self.simulation = libaudioverse.Simulation(device_index = None, block_size = 900)
 		self.make_sound_objects()
-		self.hrtf_panner = libaudioverse.HrtfObject(self.simulation, os.path.join(UNSPOKEN_ROOT_PATH, 'mit.hrtf'))
+		self.hrtf_panner = libaudioverse.HrtfNode(self.simulation, "default")
 		self.hrtf_panner.should_crossfade = False
-		self.simulation.output_object = self.hrtf_panner
-		self.mixer = mixer.Mixer(self.simulation, 1)
+		self.hrtf_panner.connect_simulation(0)
 		# Hook to keep NVDA from announcing roles.
 		self._NVDA_getSpeechTextForProperties = speech.getSpeechTextForProperties
 		speech.getSpeechTextForProperties = self._hook_getSpeechTextForProperties
@@ -104,12 +104,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._display_width = 180.0
 		self._display_height_min = -40.0
 		self._display_height_magnitude = 50.0
+		#the mixer feeds us through NVDA.
+		self.mixer =mixer.Mixer(self.simulation, 2)
 
 	def make_sound_objects(self):
 		"""Makes sound objects from libaudioverse."""
 		for key, value in sound_files.iteritems():
 			path = os.path.join(UNSPOKEN_SOUNDS_PATH, value)
-			libaudioverse_object = libaudioverse.FileObject(self.simulation, path)
+			libaudioverse_object = libaudioverse.FileNode(self.simulation, path)
 			sounds[key] = libaudioverse_object
 
 	def _hook_getSpeechTextForProperties(self, reason=NVDAObjects.controlTypes.REASON_QUERY, *args, **kwargs):
@@ -148,15 +150,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			#clamp these to Libaudioverse's internal ranges.
 			angle_x = clamp(angle_x, -90.0, 90.0)
 			angle_y = clamp(angle_y, -90.0, 90.0)
-			#Suspend the HRTFpanner.
-			self.hrtf_panner.suspended = True	
-			self.hrtf_panner.inputs[0] = sounds[role], 0
-			self.hrtf_panner.azimuth = angle_x
-			self.hrtf_panner.elevation = angle_y
-			sounds[role].position = 0
-			self.hrtf_panner.reset()
-			#Turn it back on.
-			self.hrtf_panner.suspended = False
+			#In theory, this can be made faster if we remember which is last, but that shouldn't matter here
+			with self.simulation:
+				for i, j in sounds.iteritems():
+					j.disconnect(0)
+				sounds[role].connect(0, self.hrtf_panner, 0)	
+				sounds[role].position = 0.0
+				self.hrtf_panner.azimuth = angle_x
+				self.hrtf_panner.elevation = angle_y
 
 	def event_becomeNavigatorObject(self, obj, nextHandler):
 		self.play_object(obj)
