@@ -121,6 +121,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				del kwargs['role']
 		return self._NVDA_getSpeechTextForProperties(reason, *args, **kwargs)
 
+	def _compute_volume(self):
+		driver=speech.getSynth()
+		volume = getattr(driver, 'volume', 100)/100.0 #nvda reports as percent.
+		volume=clamp(volume, 0.0, 1.0)
+		return volume
+
+
 	def play_object(self, obj):
 		curtime = time.time()
 		if curtime-self._last_played_time < 0.1 and obj is self._last_played_object:
@@ -158,6 +165,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				sounds[role].position = 0.0
 				self.hrtf_panner.azimuth = angle_x
 				self.hrtf_panner.elevation = angle_y
+				self.hrtf_panner.mul =self._compute_volume()
 
 	def event_becomeNavigatorObject(self, obj, nextHandler):
 		self.play_object(obj)
