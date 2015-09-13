@@ -89,7 +89,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def __init__(self, *args, **kwargs):
 		super(GlobalPlugin, self).__init__(*args, **kwargs)
-		self.simulation = libaudioverse.Simulation(device_index = None, block_size = 900)
+		self.simulation = libaudioverse.Simulation(block_size = 1024)
 		self.make_sound_objects()
 		self.hrtf_panner = libaudioverse.HrtfNode(self.simulation, "default")
 		self.hrtf_panner.should_crossfade = False
@@ -105,13 +105,16 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._display_height_min = -40.0
 		self._display_height_magnitude = 50.0
 		#the mixer feeds us through NVDA.
-		self.mixer =mixer.Mixer(self.simulation, 2)
+		self.mixer =mixer.Mixer(self.simulation, 1)
 
 	def make_sound_objects(self):
 		"""Makes sound objects from libaudioverse."""
 		for key, value in sound_files.iteritems():
 			path = os.path.join(UNSPOKEN_SOUNDS_PATH, value)
-			libaudioverse_object = libaudioverse.FileNode(self.simulation, path)
+			libaudioverse_object = libaudioverse.BufferNode(self.simulation)
+			buffer = libaudioverse.Buffer(self.simulation)
+			buffer.load_from_file(path)
+			libaudioverse_object.buffer = buffer
 			sounds[key] = libaudioverse_object
 
 	def _hook_getSpeechTextForProperties(self, reason=NVDAObjects.controlTypes.REASON_QUERY, *args, **kwargs):
@@ -126,7 +129,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		volume = getattr(driver, 'volume', 100)/100.0 #nvda reports as percent.
 		volume=clamp(volume, 0.0, 1.0)
 		return volume
-
 
 	def play_object(self, obj):
 		curtime = time.time()
