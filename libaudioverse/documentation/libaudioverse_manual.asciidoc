@@ -1,0 +1,19 @@
+= Libaudioverse 0.8 Reference Manual
+:toc:
+:toclevels: 1
+
+include::introduction.asciidoc[tabsize=4]
+
+include::build_instructions.asciidoc[tabsize=4]
+
+include::tutorials.asciidoc[tabsize=4]
+
+include::basics.asciidoc[tabsize=4]
+
+include::binding_notes.asciidoc[tabsize=4]
+
+include::c_api.asciidoc[tabsize=4]
+
+include::node_reference.asciidoc[tabsize=4]
+
+include::enumerations.asciidoc[tabsize=4]
