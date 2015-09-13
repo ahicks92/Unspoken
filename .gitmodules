@@ -1,3 +1,0 @@
-[submodule "libaudioverse"]
-	path = libaudioverse
-	url = git@github.com:camlorn/libaudioverse.git
