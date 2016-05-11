@@ -1,8 +1,12 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
 #include <libaudioverse/libaudioverse.h>
 #include <libaudioverse/libaudioverse_properties.h>
+#include <libaudioverse/nodes/crossfading_delay.hpp>
 #include <libaudioverse/private/simulation.hpp>
 #include <libaudioverse/private/node.hpp>
 #include <libaudioverse/private/properties.hpp>
@@ -13,41 +17,13 @@ A copy of the GPL, as well as other important copyright and licensing informatio
 
 namespace libaudioverse_implementation {
 
-class CrossfadingDelayNode: public Node {
-	public:
-	CrossfadingDelayNode(std::shared_ptr<Simulation> simulation, float maxDelay, int channels);
-	~CrossfadingDelayNode();
-	void process();
-	protected:
-	void delayChanged();
-	void recomputeDelta();
-	//These do not touch the line. They keep properties in sync.
-	//updateDelayInSamples is called when delay changes; updateDelay when delay_samples changes.
-	void updateDelaySamples();
-	void updateDelay();
-	//Flag to prevent "ping-pong" in the above callbacks.
-	bool is_syncing_properties = false;
-	//Either 0, Lav_DELAY_DELAY, or Lav_DELAY_DELAY_SAMPLES.
-	int last_updated_delay_property = 0;
-	unsigned int delay_line_length = 0;
-	CrossfadingDelayLine **lines;
-	int channels;
-};
-
 CrossfadingDelayNode::CrossfadingDelayNode(std::shared_ptr<Simulation> simulation, float maxDelay, int channels): Node(Lav_OBJTYPE_CROSSFADING_DELAY_NODE, simulation, channels, channels) {
 	if(channels <= 0) ERROR(Lav_ERROR_RANGE, "lineCount must be greater than 0.");
 	this->channels = channels;
 	lines = new CrossfadingDelayLine*[channels];
 	for(unsigned int i = 0; i < channels; i++) lines[i] = new CrossfadingDelayLine(maxDelay, simulation->getSr());
 	getProperty(Lav_DELAY_DELAY).setFloatRange(0.0f, maxDelay);
-	getProperty(Lav_DELAY_DELAY_SAMPLES).setDoubleRange(0.0, maxDelay*(double)simulation->getSr());
-	//These callbacks make these two properties be linked, such that updating one updates the other.
-	getProperty(Lav_DELAY_DELAY).setPostChangedCallback([&] () {updateDelaySamples();});
-	getProperty(Lav_DELAY_DELAY_SAMPLES).setPostChangedCallback([&] () {updateDelay();});
-	//finally, set the read-only max delay.
 	getProperty(Lav_DELAY_DELAY_MAX).setFloatValue(maxDelay);
-	//Setup as though we just changed delay.
-	last_updated_delay_property = Lav_DELAY_DELAY;
 	appendInputConnection(0, channels);
 	appendOutputConnection(0, channels);
 }
@@ -67,37 +43,12 @@ void CrossfadingDelayNode::recomputeDelta() {
 }
 
 void CrossfadingDelayNode::delayChanged() {
-	if(last_updated_delay_property == Lav_DELAY_DELAY) {
-		float newDelay = getProperty(Lav_DELAY_DELAY).getFloatValue();
-		for(int i = 0; i < channels; i++) lines[i]->setDelay(newDelay);
-	}
-	else {
-		int delayInSamples = (int)getProperty(Lav_DELAY_DELAY_SAMPLES).getDoubleValue();
-		for(int i = 0; i < channels; i++) lines[i]->setDelayInSamples(delayInSamples);
-	}
-	last_updated_delay_property = 0;
-}
-
-void CrossfadingDelayNode::updateDelaySamples() {
-	if(is_syncing_properties) return; //The other callback is why we were called.
-	double newValue = getProperty(Lav_DELAY_DELAY).getFloatValue()*(double)simulation->getSr();
-	is_syncing_properties = true;
-	getProperty(Lav_DELAY_DELAY_SAMPLES).setDoubleValue(newValue);
-	is_syncing_properties = false;
-	last_updated_delay_property = Lav_DELAY_DELAY;
-}
-
-void CrossfadingDelayNode::updateDelay() {
-	if(is_syncing_properties) return; //The other callback is why we were called.
-	double newValue = getProperty(Lav_DELAY_DELAY_SAMPLES).getDoubleValue()/simulation->getSr();
-	is_syncing_properties = true;
-	getProperty(Lav_DELAY_DELAY).setFloatValue(newValue);
-	is_syncing_properties = false;
-	last_updated_delay_property = Lav_DELAY_DELAY_SAMPLES;
+	float newDelay = getProperty(Lav_DELAY_DELAY).getFloatValue();
+	for(int i = 0; i < channels; i++) lines[i]->setDelay(newDelay);
 }
 
 void CrossfadingDelayNode::process() {
-	if(last_updated_delay_property) delayChanged();
+	if(werePropertiesModified(this, Lav_DELAY_DELAY)) delayChanged();
 	if(werePropertiesModified(this, Lav_DELAY_INTERPOLATION_TIME)) recomputeDelta();
 	float feedback = getProperty(Lav_DELAY_FEEDBACK).getFloatValue();
 	//optimize the common case of not having feedback.

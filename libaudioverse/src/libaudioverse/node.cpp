@@ -1,6 +1,9 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
 
 /**Handles functionality common to all objects: linking, allocating, and freeing, as well as parent-child relationships.*/
 #include <libaudioverse/libaudioverse.h>
@@ -14,6 +17,7 @@ A copy of the GPL, as well as other important copyright and licensing informatio
 #include <libaudioverse/private/metadata.hpp>
 #include <libaudioverse/private/kernels.hpp>
 #include <libaudioverse/private/buffer.hpp>
+#include <libaudioverse/private/dependency_computation.hpp>
 #include <algorithm>
 #include <memory>
 #include <stdlib.h>
@@ -22,6 +26,7 @@ A copy of the GPL, as well as other important copyright and licensing informatio
 #include <vector>
 
 namespace libaudioverse_implementation {
+
 
 /**Given two nodes, determine if connecting an output of start to an input of end causes a cycle.*/
 bool doesEdgePreserveAcyclicity(std::shared_ptr<Job> start, std::shared_ptr<Job> end) {
@@ -33,17 +38,15 @@ bool doesEdgePreserveAcyclicity(std::shared_ptr<Job> start, std::shared_ptr<Job>
 	//connecting start to end connects everything "behind" start to end,
 	//so there's a cycle if end is already behind start.
 	//We check by walking all dependencies of start looking for end.
-	//This is slow, in that it visits extra nodes on a cycle; but if there is no cycle, we visit everything anyway.
-	//We go via visitDependenciesUnconditional to avoid the state check;
-	//this unfortunately involves casting.
-	std::function<void(std::shared_ptr<Job>&)> f ;
 	bool cycled = false;
-	f = [&] (std::shared_ptr<Job> &j) {
-		auto n = std::dynamic_pointer_cast<Node>(j);
-		if(j == end) cycled = true;
-		else if(cycled == false && n) n->visitDependenciesUnconditional(f);
+	auto helper = [&](std::shared_ptr<Job> current, auto callable) {
+		cycled = current == end;
+		if(cycled) return;
+		//We're passing ourself to ourself to avoid std::functions all the way down.
+		else visitDependencies(current, callable, callable);
 	};
-	std::dynamic_pointer_cast<Node>(start)->visitDependencies(f);
+	//And then we pass it to itself.
+	visitDependencies(start, helper, helper);
 	return cycled == false;
 }
 
@@ -56,25 +59,15 @@ bool PropertyBackrefComparer::operator() (const std::tuple<std::weak_ptr<Node>, 
 	else return std::get<1>(a) < std::get<1>(b);
 }
 
-Node::Node(int type, std::shared_ptr<Simulation> simulation, unsigned int numInputBuffers, unsigned int numOutputBuffers): ExternalObject(type) {
+Node::Node(int type, std::shared_ptr<Simulation> simulation, unsigned int numInputBuffers, unsigned int numOutputBuffers): Job(type) {
 	this->simulation= simulation;
 	//request properties from the metadata module.
 	properties = makePropertyTable(type);
-	//and events.
-	events = makeEventTable(type);
-
 	//Associate properties to this node:
 	for(auto i: properties) {
 		auto &prop = properties[i.first];
 		prop.associateNode(this);
 		prop.associateSimulation(simulation);
-	}
-
-	//Loop through callbacks, associating them with our simulation.
-	//map iterators dont' give references, only operator[].
-	for(auto i: events) {
-		events[i.first].associateSimulation(simulation);
-		events[i.first].associateNode(this);
 	}
 
 	//allocations can be done simply by redirecting through resize after our initialization step.
@@ -84,11 +77,7 @@ Node::Node(int type, std::shared_ptr<Simulation> simulation, unsigned int numInp
 	block_size = simulation->getBlockSize();
 	
 	//We must invalidate the plan when people touch the state property.
-	getProperty(Lav_NODE_STATE).setPostChangedCallback([&] () {
-		//The qualification is important.
-		if(getState() != prev_state) this->simulation->invalidatePlan();
-		prev_state = getState();
-	});
+	getProperty(Lav_NODE_STATE).setPostChangedCallback([&] () {stateChanged();});
 }
 
 Node::~Node() {
@@ -109,10 +98,12 @@ void Node::tickProperties() {
 
 void Node::tick() {
 	last_processed = simulation->getTickCount();
-	zeroOutputBuffers(); //we always do this because sometimes we're not going to actually do anything else.
-	if(getState() == Lav_NODESTATE_PAUSED) return; //nothing to do, for we are paused.
+	bool paused = getState() == Lav_NODESTATE_PAUSED;
+	if(paused) return;
+	//If we're paused, then OutputConnectiona dds zeros.
+	//Consequently, we don't do this in that case.
+	if(should_zero_output_buffers) 	zeroOutputBuffers();
 	tickProperties();
-	//willProcessParents is handled by the planner.
 	zeroInputBuffers();
 	//Collect parent outputs onto ours.
 	//by using the getInputConnection and getInputConnectionCount functions, we allow subgraphs to override effectively.
@@ -186,9 +177,6 @@ void Node::zeroInputBuffers() {
 	}
 }
 
-void Node::willProcessParents() {
-}
-
 void Node::willTick() {
 }
 
@@ -198,6 +186,14 @@ int Node::getState() {
 
 void Node::setState(int newState) {
 	getProperty(Lav_NODE_STATE).setIntValue(newState);
+}
+
+void Node::stateChanged() {
+	if(getState() == prev_state) return;
+	simulation->invalidatePlan();
+	if(prev_state == Lav_NODESTATE_ALWAYS_PLAYING) simulation->unregisterNodeForAlwaysPlaying(std::static_pointer_cast<Node>(shared_from_this()));
+	prev_state = getProperty(Lav_NODE_STATE).getIntValue();
+	if(prev_state == Lav_NODESTATE_ALWAYS_PLAYING) simulation->registerNodeForAlwaysPlaying(std::static_pointer_cast<Node>(shared_from_this()));
 }
 
 int Node::getOutputBufferCount() {
@@ -342,11 +338,6 @@ void Node::visitPropertyBackrefs(int which, std::function<void(Property&)> pred)
 	}
 }
 
-Event& Node::getEvent(int which) {
-	if(events.count(which) == 0) ERROR(Lav_ERROR_RANGE, "Event does not exist.");
-	return events[which];
-}
-
 void Node::lock() {
 	simulation->lock();
 }
@@ -381,97 +372,16 @@ void Node::resize(int newInputCount, int newOutputCount) {
 	}
 }
 
-void Node::visitDependencies(std::function<void(std::shared_ptr<Job>&)> &pred) {
-	if(getState() != Lav_NODESTATE_PAUSED) visitDependenciesUnconditional(pred);
-}
-
-void Node::willExecuteDependencies() {
-	willProcessParents();
-}
-
 void Node::execute() {
 	tick();
 }
 
-void Node::visitDependenciesUnconditional(std::function<void(std::shared_ptr<Job>&)> &pred) {
-	for(int i = 0; i < getInputConnectionCount(); i++) {
-		auto conn = getInputConnection(i)->getConnectedNodes();
-		for(auto &p: conn) {
-			auto j = std::dynamic_pointer_cast<Job>(p->shared_from_this());
-			pred(j);
-		}
-	}
-	for(auto &p: properties) {
-		auto &prop = p.second;
-		auto conn = prop.getInputConnection();
-		if(conn) {
-			for(auto n: conn->getConnectedNodes()) {
-				auto j = std::dynamic_pointer_cast<Job>(n->shared_from_this());
-				pred(j);
-			}
-		}
-	}	
+bool Node::canCull() {
+	return getState() == Lav_NODESTATE_PAUSED;
 }
 
-//LavSubgraphNode
-
-SubgraphNode::SubgraphNode(int type, std::shared_ptr<Simulation> simulation): Node(type, simulation, 0, 0) {
-}
-
-void SubgraphNode::setInputNode(std::shared_ptr<Node> node) {
-	subgraph_input= node;
-	simulation->invalidatePlan();
-}
-
-void SubgraphNode::setOutputNode(std::shared_ptr<Node> node) {
-	subgraph_output=node;
-	simulation->invalidatePlan();
-}
-
-int SubgraphNode::getInputConnectionCount() {
-	if(subgraph_input) return subgraph_input->getInputConnectionCount();
-	else return 0;
-}
-
-std::shared_ptr<InputConnection> SubgraphNode::getInputConnection(int which) {
-	if(which < 0|| which >= getInputConnectionCount()) ERROR(Lav_ERROR_RANGE, "Invalid input.");
-	else return subgraph_input->getInputConnection(which);
-}
-
-int SubgraphNode::getOutputBufferCount() {
-	if(subgraph_output) return subgraph_output->getOutputBufferCount();
-	else return 0;
-}
-
-float** SubgraphNode::getOutputBufferArray() {
-	if(subgraph_output) return subgraph_output->getOutputBufferArray();
-	return nullptr;
-}
-
-//Our only dependency is our output node, if set.
-void SubgraphNode::visitDependenciesUnconditional(std::function<void(std::shared_ptr<Job>&)> &pred) {
-	auto j = std::static_pointer_cast<Job>(subgraph_output);
-	if(j) pred(j);
-}
-
-//This override is needed because nodes try to add their inputs, but we override where input connections come from.
-//In addition, we have no input buffers.
-void SubgraphNode::tick() {
-	last_processed = simulation->getTickCount();
-	//Zeroing the output buffers will silence our output.
-	if(getState() == Lav_NODESTATE_PAUSED) {
-		zeroOutputBuffers();
-		return;
-	}
-	tickProperties();
-	zeroInputBuffers();
-	is_processing = true;
-	num_input_buffers = input_buffers.size();
-	num_output_buffers = output_buffers.size();
-	//No process call, subgraphs  don't support it.
-	applyMul();
-	applyAdd();
-	is_processing = false;
+void Node::setShouldZeroOutputBuffers(bool v) {
+	should_zero_output_buffers = v;
 }
 
 //begin public api
@@ -516,6 +426,14 @@ Lav_PUBLIC_FUNCTION LavError Lav_nodeDisconnect(LavHandle nodeHandle, int output
 	auto other = incomingObject<Node>(otherHandle, true);
 	LOCK(*node);
 	node->disconnect(output, other, input);
+	PUB_END
+}
+
+Lav_PUBLIC_FUNCTION LavError Lav_nodeIsolate(LavHandle nodeHandle) {
+	PUB_BEGIN
+	auto n = incomingObject<Node>(nodeHandle);
+	LOCK(*n);
+	n->isolate();
 	PUB_END
 }
 
@@ -844,6 +762,7 @@ Lav_PUBLIC_FUNCTION LavError Lav_nodeSetBufferProperty(LavHandle nodeHandle, int
 	PUB_BEGIN
 	PROP_PREAMBLE(nodeHandle, slot, Lav_PROPERTYTYPE_BUFFER);
 	auto buff=incomingObject<Buffer>(bufferHandle, true);
+	if(buff && buff->getSimulation() != node_ptr->getSimulation()) ERROR(Lav_ERROR_CANNOT_CROSS_SIMULATIONS, "Buffer is not from the same simulation as the node.");
 	prop.setBufferValue(buff);
 	PUB_END
 }
@@ -852,39 +771,6 @@ Lav_PUBLIC_FUNCTION LavError Lav_nodeGetBufferProperty(LavHandle nodeHandle, int
 	PUB_BEGIN
 	PROP_PREAMBLE(nodeHandle, slot, Lav_PROPERTYTYPE_BUFFER);
 	*destination = outgoingObject(prop.getBufferValue());
-	PUB_END
-}
-
-//callback setup/configure/retrieval.
-Lav_PUBLIC_FUNCTION LavError Lav_nodeGetEventHandler(LavHandle nodeHandle, int event, LavEventCallback *destination) {
-	PUB_BEGIN
-	auto ptr = incomingObject<Node>(nodeHandle);
-	LOCK(*ptr);
-	*destination = ptr->getEvent(event).getExternalHandler();
-	PUB_END
-}
-
-Lav_PUBLIC_FUNCTION LavError Lav_nodeGetEventUserDataPointer(LavHandle nodeHandle, int event, void** destination) {
-	PUB_BEGIN
-	auto ptr = incomingObject<Node>(nodeHandle);
-	LOCK(*ptr);
-	*destination = ptr->getEvent(event).getUserData();
-	PUB_END
-}
-
-Lav_PUBLIC_FUNCTION LavError Lav_nodeSetEvent(LavHandle nodeHandle, int event, LavEventCallback handler, void* userData) {
-	PUB_BEGIN
-	auto ptr = incomingObject<Node>(nodeHandle);
-	LOCK(*ptr);
-	auto &ev = ptr->getEvent(event);
-	if(handler) {
-		ev.setHandler([=](std::shared_ptr<Node> o, void* d) { handler(outgoingObject(o), d);});
-		ev.setExternalHandler(handler);
-		ev.setUserData(userData);
-	} else {
-		ev.setHandler(std::function<void(std::shared_ptr<Node>, void*)>());
-		ev.setExternalHandler(nullptr);
-	}
 	PUB_END
 }
 

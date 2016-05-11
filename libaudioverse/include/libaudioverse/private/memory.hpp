@@ -1,7 +1,11 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
 #pragma once
+#include "../libaudioverse.h"
 #include <map>
 #include <memory>
 #include <string.h>
@@ -47,7 +51,7 @@ class ExternalObject: public std::enable_shared_from_this<ExternalObject>  {
 template <class t>
 std::shared_ptr<t> incomingPointer(void* ptr) {
 	std::lock_guard<std::recursive_mutex> guard(*memory_lock);
-	if(external_ptrs->count(ptr) == 0) return ERROR(Lav_ERROR_INVALID_POINTER, "Pointer did not originate from Libaudioverse or was deleted.");
+	if(external_ptrs->count(ptr) == 0) ERROR(Lav_ERROR_INVALID_POINTER, "Pointer did not originate from Libaudioverse or was deleted.");
 	return std::static_pointer_cast<t, void>(external_ptrs->at(ptr));
 }
 

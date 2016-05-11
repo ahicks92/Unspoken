@@ -1,12 +1,22 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
+//This has to be first for the macro.
+#ifdef WIN32
+#include <windows.h>
+#define ENABLE_SNDFILE_WINDOWS_PROTOTYPES 1
+#endif
+#include <sndfile.h>
 #include <libaudioverse/private/file.hpp>
 #include <libaudioverse/libaudioverse.h>
-#include <sndfile.h>
 #include <libaudioverse/private/error.hpp>
 #include <libaudioverse/private/macros.hpp>
+#include <libaudioverse/private/utf8.hpp>
 #include <string>
+#include <string.h>
 
 namespace libaudioverse_implementation {
 
@@ -20,7 +30,7 @@ void FileWriter::open(const char* path, int sr, int channels) {
 	if(channels <= 0) ERROR(Lav_ERROR_RANGE, "Channels must be positive.");
 	int length = strlen(path);
 	if(length < 4) ERROR(Lav_ERROR_FILE, "File must have a 3-character extension.");
-	if(path[length-4] != '.') ERROR(Lav_ERROR_FILE, "File must have a 3-letter extension."); //File name does not have 3-letter extension.
+	if(path[length-4] != '.') ERROR(Lav_ERROR_FILE, "File must have a 3-letter extension.");
 	//convert to a C++ string for sanity.
 	std::string extension(path+length-3);
 	if(extension =="wav") info.format = SF_FORMAT_WAV | SF_FORMAT_PCM_16;
@@ -28,7 +38,13 @@ void FileWriter::open(const char* path, int sr, int channels) {
 	else ERROR(Lav_ERROR_FILE, "Cannot handle extension"+extension);
 	info.samplerate =sr;
 	info.channels=channels;
+	#ifdef WIN32
+	std::string p(path);
+	auto wp = utf8ToWide(path);
+	handle = sf_wchar_open(wp.c_str(), SFM_WRITE, &info);
+	#else
 	handle = sf_open(path, SFM_WRITE, &info);
+	#endif
 	if(handle == nullptr) {
 		ERROR(Lav_ERROR_FILE, std::string("Libsndfile failed to open ")+path+" for writing.");
 	}

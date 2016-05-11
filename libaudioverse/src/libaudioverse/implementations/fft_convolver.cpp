@@ -1,6 +1,9 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
 #include <libaudioverse/private/dspmath.hpp>
 #include <libaudioverse/private/kernels.hpp>
 #include <libaudioverse/private/memory.hpp>
@@ -45,7 +48,6 @@ void FftConvolver::setResponse(int length, float* newResponse) {
 		block_fft=allocArray<kiss_fft_cpx>(fft_size);
 	}
 	memset(workspace, 0, sizeof(float)*workspace_size);
-	memset(tail, 0, sizeof(float)*tail_size);
 	//Store the fft of the response.
 	std::copy(newResponse, newResponse+length, workspace);
 	kiss_fftr(fft, workspace, response_fft);
@@ -84,7 +86,12 @@ void FftConvolver::convolveFft(kiss_fft_cpx *fft, float* output) {
 	//Also copy to the output at the same time.
 	scalarMultiplicationKernel(block_size, 1.0/workspace_size, workspace, output);
 	//Copy out the tail.
-	std::copy(workspace+block_size, workspace+workspace_size, tail);
+		std::copy(workspace+block_size, workspace+workspace_size, tail);
+}
+
+void FftConvolver::reset() {
+	std::fill(workspace, workspace+workspace_size, 0.0f);
+	std::fill(tail, tail+tail_size, 0.0f);
 }
 
 }

@@ -4,10 +4,10 @@ import time
 
 libaudioverse.initialize()
 sim = libaudioverse.Simulation()
-sim.set_output_device(-1)
+sim.set_output_device()
 def ringmod(obj, frames, input_count, inputs, output_count, outputs):
-	for i in xrange(frames):
-		outputs[0][i] = inputs[0][i]*inputs[1][i]
+    for i in range(frames):
+        outputs[0][i] = inputs[0][i]*inputs[1][i]
 
 ringmod_node= libaudioverse.CustomNode(sim, 2, 1, 1, 1)
 ringmod_node.set_processing_callback(ringmod)

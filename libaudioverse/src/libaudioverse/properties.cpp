@@ -1,9 +1,13 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
 #include <libaudioverse/libaudioverse.h>
 #include <libaudioverse/private/properties.hpp>
 #include <libaudioverse/private/automators.hpp>
+#include <libaudioverse/private/buffer.hpp>
 #include <libaudioverse/private/node.hpp>
 #include <libaudioverse/private/simulation.hpp>
 #include <libaudioverse/private/connections.hpp>
@@ -18,6 +22,7 @@ Property::Property(int property_type): type(property_type) {}
 Property::~Property() {
 	if(value_buffer) freeArray(value_buffer);
 	if(node_buffer) freeArray(node_buffer);
+	if(buffer_value) buffer_value->decrementUseCount();
 }
 
 void Property::associateNode(Node* node) {
@@ -40,6 +45,7 @@ void Property::reset(bool avoidCallbacks) {
 	string_value = default_string_value;
 	farray_value = default_farray_value;
 	iarray_value = default_iarray_value;
+	if(buffer_value) buffer_value->decrementUseCount();
 	buffer_value=nullptr;
 	automators.clear();
 	if(avoidCallbacks == false) firePostChangedCallback();
@@ -201,9 +207,9 @@ float Property::getFloatValue(int i) {
 	else return value.fval;
 }
 
-void Property::setFloatValue(float v, bool avoidCallbacks) {
+void Property::setFloatValue(float v, bool avoidCallbacks, bool avoidAutomatorClear) {
 	RC(v, fval);
-	automators.clear();
+	if(avoidAutomatorClear == false) automators.clear();
 	value.fval = v;
 	last_modified=simulation->getTickCount();
 	if(avoidCallbacks == false) firePostChangedCallback();
@@ -235,9 +241,9 @@ double Property::getDoubleValue(int i) {
 	else return value.dval;
 }
 
-void Property::setDoubleValue(double v, bool avoidCallbacks) {
+void Property::setDoubleValue(double v, bool avoidCallbacks, bool avoidAutomatorClear) {
 	RC(v, dval);
-	automators.clear();
+	if(avoidAutomatorClear == false) automators.clear();
 	value.dval = v;
 	last_modified =simulation->getTickCount();
 	if(avoidCallbacks == false) firePostChangedCallback();
@@ -472,7 +478,9 @@ std::shared_ptr<Buffer> Property::getBufferValue() {
 }
 
 void Property::setBufferValue(std::shared_ptr<Buffer> b, bool avoidCallbacks) {
+	if(buffer_value) buffer_value->decrementUseCount();
 	buffer_value=b;
+	if(b) b->incrementUseCount();
 	last_modified = simulation->getTickCount();
 	if(avoidCallbacks == false) firePostChangedCallback();
 }
@@ -561,52 +569,52 @@ void Property::firePostChangedCallback() {
 //Property creators.
 
 
-Property* createIntProperty(const char* name, int default, int min, int max) {
+Property* createIntProperty(const char* name, int defaultValue, int min, int max) {
 	Property* retval = new Property(Lav_PROPERTYTYPE_INT);
-	retval->setIntDefault(default);
+	retval->setIntDefault(defaultValue);
 	retval->setIntRange(min, max);
 	retval->setName(name);
 	retval->reset();
 	return retval;
 }
 
-Property* createFloatProperty(const char* name, float default, float min, float max) {
+Property* createFloatProperty(const char* name, float defaultValue, float min, float max) {
 	Property* retval = new Property(Lav_PROPERTYTYPE_FLOAT);
 	retval->setName(name);
-	retval->setFloatDefault(default);
+	retval->setFloatDefault(defaultValue);
 	retval->setFloatRange(min, max);
 	retval->reset();
 	return retval;
 }
 
-Property* createDoubleProperty(const char* name, double default, double min, double max) {
+Property* createDoubleProperty(const char* name, double defaultValue, double min, double max) {
 	Property* retval = new Property(Lav_PROPERTYTYPE_DOUBLE);
-	retval->setDoubleDefault(default);
+	retval->setDoubleDefault(defaultValue);
 	retval->setDoubleRange(min, max);
 	retval->setName(name);
 	retval->reset();
 	return retval;
 }
 
-Property* createFloat3Property(const char* name, float default[3]) {
+Property* createFloat3Property(const char* name, float defaultValue[3]) {
 	Property* retval = new Property(Lav_PROPERTYTYPE_FLOAT3);
-	retval->setFloat3Default(default);
+	retval->setFloat3Default(defaultValue);
 	retval->setName(name);
 	retval->reset();
 	return retval;
 }
 
-Property* createFloat6Property(const char* name, float v[6]) {
+Property* createFloat6Property(const char* name, float defaultValue[6]) {
 	Property* retval = new Property(Lav_PROPERTYTYPE_FLOAT6);
-	retval->setFloat6Default(v);
+	retval->setFloat6Default(defaultValue);
 	retval->setName(name);
 	retval->reset();
 	return retval;
 }	
 
-Property* createStringProperty(const char* name, const char* default) {
+Property* createStringProperty(const char* name, const char* defaultValue) {
 	Property* retval = new Property(Lav_PROPERTYTYPE_STRING);
-	retval->setStringDefault(default);
+	retval->setStringDefault(defaultValue);
 	retval->setName(name);
 	retval->reset();
 	return retval;

@@ -1,6 +1,9 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
 #include <libaudioverse/libaudioverse.h>
 #include <libaudioverse/libaudioverse_properties.h>
 #include <libaudioverse/private/simulation.hpp>
@@ -36,36 +39,36 @@ Node(Lav_OBJTYPE_FEEDBACK_DELAY_NETWORK_NODE, simulation, channels, channels) {
 	//Allocate and configure the filters.
 	filters = new OnePoleFilter*[channels];
 	for(int i = 0; i < channels; i++) filters[i] = new OnePoleFilter(simulation->getSr());
-	
-	
-	std::vector<float> default(channels, 0.0f);
+	std::vector<float> defaultHolder(channels, 0.0f);
 	//Set up the properties.
 	getProperty(Lav_FDN_DELAYS).setArrayLengthRange(channels, channels);
 	getProperty(Lav_FDN_DELAYS).setFloatRange(0.0, maxDelay);
-	getProperty(Lav_FDN_DELAYS).replaceFloatArray(channels, &default[0]);	
-	getProperty(Lav_FDN_DELAYS).setFloatArrayDefault(default);
+	getProperty(Lav_FDN_DELAYS).replaceFloatArray(channels, &defaultHolder[0]);	
+	getProperty(Lav_FDN_DELAYS).setFloatArrayDefault(defaultHolder);
 	
 	getProperty(Lav_FDN_OUTPUT_GAINS).setArrayLengthRange(channels, channels);
 	getProperty(Lav_FDN_OUTPUT_GAINS).setFloatRange(-std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity());
-	default.clear();
-	default.resize(channels, 1.0f);
-	getProperty(Lav_FDN_OUTPUT_GAINS).replaceFloatArray(channels, &default[0]);
-	getProperty(Lav_FDN_OUTPUT_GAINS).setFloatArrayDefault(default);
+	defaultHolder.clear();
+	defaultHolder.resize(channels, 1.0f);
+	getProperty(Lav_FDN_OUTPUT_GAINS).replaceFloatArray(channels, &defaultHolder[0]);
+	getProperty(Lav_FDN_OUTPUT_GAINS).setFloatArrayDefault(defaultHolder);
 	//Identity matrix.
-	default.clear();
-	default.resize(channels*channels, 0.0f);
+	defaultHolder.clear();
+	defaultHolder.resize(channels*channels, 0.0f);
 	//Build an identity matrix.
-	for(int i = 0; i < channels; i++) default[i*channels+i] = 0.0f;
+	for(int i = 0; i < channels; i++) defaultHolder[i*channels+i] = 0.0f;
 	getProperty(Lav_FDN_MATRIX).setArrayLengthRange(channels*channels, channels*channels);
 	getProperty(Lav_FDN_MATRIX).setFloatRange(-std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity());
-	getProperty(Lav_FDN_MATRIX).replaceFloatArray(channels*channels, &default[0]);
-	getProperty(Lav_FDN_MATRIX).setFloatArrayDefault(default);
+	getProperty(Lav_FDN_MATRIX).replaceFloatArray(channels*channels, &defaultHolder[0]);
+	getProperty(Lav_FDN_MATRIX).setFloatArrayDefault(defaultHolder);
 	
 	//The filters.
 	getProperty(Lav_FDN_FILTER_TYPES).setArrayLengthRange(channels, channels);
 	getProperty(Lav_FDN_FILTER_TYPES).zeroArray(channels);
 	getProperty(Lav_FDN_FILTER_FREQUENCIES).setArrayLengthRange(channels, channels);
 	getProperty(Lav_FDN_FILTER_FREQUENCIES).zeroArray(channels);
+	
+	setShouldZeroOutputBuffers(false);
 }
 
 FeedbackDelayNetworkNode::~FeedbackDelayNetworkNode() {

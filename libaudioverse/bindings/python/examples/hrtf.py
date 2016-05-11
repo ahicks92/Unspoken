@@ -5,7 +5,7 @@ import time
 
 libaudioverse.initialize()
 sim = libaudioverse.Simulation()
-sim.set_output_device(-1)
+sim.set_output_device()
 print "Enter a file path."
 path = raw_input()
 path = os.path.abspath(path)
@@ -23,11 +23,11 @@ Enter any python expression that returns a tuple of numbers.  The first is azimu
 Enter quit to quit.
 """
 while True:
-	command = raw_input()
-	if command == 'quit':
-		break
-	az, elev = eval(command)
-	panner.azimuth.value = az
-	panner.elevation.value = elev
+    command = raw_input()
+    if command == 'quit':
+        break
+    az, elev = eval(command)
+    panner.azimuth.value = az
+    panner.elevation.value = elev
 
 libaudioverse.shutdown()

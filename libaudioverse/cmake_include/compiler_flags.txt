@@ -2,15 +2,34 @@ if(${MSVC})
 #turn off the secure crt warnings, because we're not allowed to use microsoft specific functions.
 #Also turn off unsafe stl warnings.  This library likes the unsafe stl.
 add_definitions(-D_CRT_SECURE_NO_WARNINGS -D_SCL_SECURE_NO_WARNINGS)
+
+if(${LIBAUDIOVERSE_MSVC_FORCE_STATIC_RUNTIME})
+#Force the static runtime.
+#We leave minimum sized releases alone.
+foreach(flag_var
+CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELWITHDEBINFO
+CMAKE_C_FLAGS_RELEASE CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELWITHDEBINFO)
+string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
+endforeach()
+endif()
 endif()
 
-#For linux and mac, we must append -std=c99 and -std=c++99
 if(${CMAKE_COMPILER_IS_GNUCC})
 SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99")
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 endif()
 
 add_definitions(-DLIBAUDIOVERSE_MALLOC_ALIGNMENT=${LIBAUDIOVERSE_MALLOC_ALIGNMENT})
 if(${LIBAUDIOVERSE_USE_SSE2})
 add_definitions(-DLIBAUDIOVERSE_USE_SSE2)
+if(CMAKE_COMPILER_IS_GNUC OR CMAKE_COMPILER_IS_GNUCXX)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse2 -fPIC")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse2 -fPIC")
+endif()
+endif()
+
+if(${WIN32})
+add_definitions(-DLIBAUDIOVERSE_IS_WINDOWS)
+#For multimedia class scheduler service.
+set(libaudioverse_required_libraries ${libaudioverse_required_libraries} avrt)
 endif()

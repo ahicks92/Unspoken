@@ -1,6 +1,9 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
 #pragma once
 #include "libaudioverse.h"
 #ifdef __cplusplus
@@ -13,8 +16,6 @@ It is worth keeping separate because it will grow rapidly and contain documentat
 
 The standard for naming is:
 Lav_NODETYPE_PROPNAME
-or
-Lav_NODETYPE_callbackname_EVENT
 
 Furthermore, all libaudioverse properties are negative.
 
@@ -23,9 +24,8 @@ Values below -100 are reserved for standard events and properties on all objects
 
 enum lav_STANDARD_PROPERTIES {
 	Lav_NODE_STATE = -100,
-	Lav_NODE_AUTORESET = -101,
-	Lav_NODE_MUL = -102,
-	Lav_NODE_ADD = -103,
+	Lav_NODE_MUL = -101,
+	Lav_NODE_ADD = -102,
 	Lav_NODE_CHANNEL_INTERPRETATION = -104,
 };
 
@@ -34,15 +34,23 @@ enum Lav_CHANNEL_INTERPRETATIONS {
 	Lav_CHANNEL_INTERPRETATION_SPEAKERS = 1,
 };
 
-enum Lav_SINE_PROPERTIES {
-	Lav_SINE_FREQUENCY = -1,
-	Lav_SINE_PHASE =-2,
+enum Lav_OSCILLATOR_PROPERTIES {
+	Lav_OSCILLATOR_FREQUENCY = -200,
+	Lav_OSCILLATOR_PHASE = -201,
+	Lav_OSCILLATOR_FREQUENCY_MULTIPLIER = -202,
 };
 
 enum lav_SQUARE_PROPERTIES {
-	Lav_SQUARE_FREQUENCY = -1,
+	Lav_SQUARE_HARMONICS = -1,
 	Lav_SQUARE_DUTY_CYCLE = -2,
-	Lav_SQUARE_PHASE = -3,
+};
+
+enum lav_TRIANGLE_PROPERTIES {
+	Lav_TRIANGLE_HARMONICS = -3,
+};
+
+enum lav_SAW_PROPERTIES {
+	Lav_SAW_HARMONICS = -3,
 };
 
 enum Lav_NOISE_PROPERTIES {
@@ -61,18 +69,7 @@ enum Lav_PANNER_PROPERTIES {
 	Lav_PANNER_ELEVATION = -2,
 	Lav_PANNER_CHANNEL_MAP = -3,
 	Lav_PANNER_SHOULD_CROSSFADE = -4,
-	Lav_PANNER_SKIP_LFE = -5,
-	Lav_PANNER_HAS_LFE = -6,
-	Lav_PANNER_SKIP_CENTER = -7,
-	Lav_PANNER_HAS_CENTER = -8,
-	Lav_PANNER_STRATEGY = -9,
-	Lav_PANNER_SPEED_OF_SOUND = -10,
-	Lav_PANNER_DISTANCE = -11,
-	Lav_PANNER_HEAD_WIDTH = -12,
-	Lav_PANNER_EAR_POSITION = -13,
-	Lav_PANNER_PASSTHROUGH = -14,
-	Lav_PANNER_APPLY_ITD = -15,
-	Lav_PANNER_USE_LINEAR_PHASE = -16,
+	Lav_PANNER_STRATEGY = -5,
 };
 
 enum Lav_PANNER_BANK_PROPERTIES {
@@ -82,11 +79,12 @@ enum Lav_PANNER_BANK_PROPERTIES {
 };
 
 enum Lav_PANNING_STRATEGIES {
-	Lav_PANNING_STRATEGY_HRTF = 0,
-	Lav_PANNING_STRATEGY_STEREO = 1,
-	Lav_PANNING_STRATEGY_SURROUND40 = 2,
-	Lav_PANNING_STRATEGY_SURROUND51 = 3,
-	Lav_PANNING_STRATEGY_SURROUND71 = 4,
+	Lav_PANNING_STRATEGY_DELEGATE = 0,
+	Lav_PANNING_STRATEGY_HRTF = 1,
+	Lav_PANNING_STRATEGY_STEREO = 2,
+	Lav_PANNING_STRATEGY_SURROUND40 = 3,
+	Lav_PANNING_STRATEGY_SURROUND51 = 4,
+	Lav_PANNING_STRATEGY_SURROUND71 = 5,
 };
 
 
@@ -97,16 +95,13 @@ enum Lav_MIXER_PROPERTIES {
 
 enum Lav_DELAY_PROPERTIES {
 	Lav_DELAY_DELAY = -1,
-	Lav_DELAY_DELAY_SAMPLES = -2,
-	Lav_DELAY_DELAY_MAX = -3,
-	Lav_DELAY_FEEDBACK = -4,
-	Lav_DELAY_INTERPOLATION_TIME = -5,
+	Lav_DELAY_DELAY_MAX = -2,
+	Lav_DELAY_FEEDBACK = -3,
+	Lav_DELAY_INTERPOLATION_TIME = -4,
 };
 
 enum Lav_PUSH_NODE_PROPERTIES {
 	Lav_PUSH_THRESHOLD = -1,
-	Lav_PUSH_AUDIO_EVENT = -2,
-	Lav_PUSH_OUT_EVENT = -3,
 };
 
 //biquad objects.
@@ -149,9 +144,9 @@ enum Lav_FDN_FILTER_TYPES {
 enum Lav_BUFFER_PROPERTIES {
 	Lav_BUFFER_BUFFER = -1,
 	Lav_BUFFER_POSITION = -2,
-	Lav_BUFFER_PITCH_BEND = -3,
+	Lav_BUFFER_RATE = -3,
 	Lav_BUFFER_LOOPING = -4,
-	Lav_BUFFER_END_EVENT = -1,
+	Lav_BUFFER_ENDED_COUNT = -5,
 };
 
 enum Lav_CONVOLVER_PROPERTIES {
@@ -181,7 +176,6 @@ enum Lav_CROSSFADER_PROPERTIES {
 	Lav_CROSSFADER_CURRENT_INPUT = -1,
 	Lav_CROSSFADER_TARGET_INPUT = -2,
 	Lav_CROSSFADER_IS_CROSSFADING = -3,
-	Lav_CROSSFADER_FINISHED_EVENT = -4,
 };
 
 enum Lav_ONE_POLE_FILTER_PROPERTIES {
@@ -207,6 +201,21 @@ enum Lav_FDN_REVERB_PROPERTIES {
 	Lav_FDN_REVERB_DENSITY = -3,
 	Lav_FDN_REVERB_DELAY_MODULATION_DEPTH = -4,
 	Lav_FDN_REVERB_DELAY_MODULATION_FREQUENCY = -5,
+};
+
+enum Lav_BLIT_PROPERTIES {
+	Lav_BLIT_HARMONICS = -1,
+	Lav_BLIT_SHOULD_NORMALIZE = -4,
+};
+
+enum Lav_LEAKY_INTEGRATOR_PROPERTIES {
+	Lav_LEAKY_INTEGRATOR_LEAKYNESS = -1,
+};
+
+enum Lav_FILE_STREAMER_PROPERTIES {
+	Lav_FILE_STREAMER_POSITION = -1,
+	Lav_FILE_STREAMER_LOOPING = -2,
+	Lav_FILE_STREAMER_ENDED= -3,
 };
 
 #ifdef __cplusplus

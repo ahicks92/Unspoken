@@ -21,12 +21,12 @@ extra_functions:
     doc_description: |
       Appenda  one-pole filter.
     params:
-      frequerncy: The {{"-3 DB"|codelit}} frequency.
+      frequency: The {{"-3 DB"|codelit}} frequency.
       isHighpass: 0 for lowpass, 1 for highpass.
   Lav_nestedAllpassNetworkNodeAppendBiquad:
-    doc-description: |
+    doc_description: |
       Append a biquad filter.
-      This is the same as the "{{Lav_OBJTYPE_BIQUAD_NODE"|node}}.
+      This is the same as the {{"Lav_OBJTYPE_BIQUAD_NODE"|node}}.
     params:
       type: A value from the {{"Lav_BIQUAD_TYPES"|enum}} enum.
       frequency: The frequency of interest.  The meaning is determined from the filter type.
@@ -48,6 +48,10 @@ outputs:
   - [constructor, "The filtered signal."]
 doc_name: nested allpass network
 doc_description: |
+  
+  This node is deprecated.
+  A more capable node along the same lines is planned, at which point this one will disappear.
+  
   This node implements nested first-order allpass filters.
   
   In order to specify how this nesting works, one must call the various control functions.

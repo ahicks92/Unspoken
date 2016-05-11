@@ -23,6 +23,7 @@ properties:
     range: [0.0, INFINITY]
     doc_description: |
       The maximum distance from the listener at which the source will be audible.
+      This property's default value is copied from the environment at source creation.
   Lav_SOURCE_SIZE:
     name: size
     type: float
@@ -36,17 +37,20 @@ properties:
   Lav_SOURCE_DISTANCE_MODEL:
     name: distance_model
     type: int
-    default: Lav_DISTANCE_MODEL_LINEAR
+    default: Lav_DISTANCE_MODEL_DELEGATE
     value_enum: Lav_DISTANCE_MODELS
     doc_description: |
       The distance model determines how quickly sources get quieter as they move away from the listener.
-  Lav_SOURCE_PANNER_STRATEGY:
-    name: panner_strategy
-    default: Lav_PANNING_STRATEGY_STEREO
+      
+      By default, this property is set to delegate, and sources consequently read from the environment.
+  Lav_SOURCE_PANNING_STRATEGY:
+    name: panning_strategy
+    default: Lav_PANNING_STRATEGY_DELEGATE
     value_enum: Lav_PANNING_STRATEGIES
     type: int
     doc_description: |
       The strategy for the internal multipanner.
+      By default, this delegates to the environment.
   Lav_SOURCE_HEAD_RELATIVE:
     name: head_relative
     type: boolean
@@ -73,7 +77,7 @@ properties:
     name: min_reverb_level
     type: float
     range: [0.0, 1.0]
-    default: 0.1
+    default: 0.15
     doc_description: |
       The minimum reverb level allowed.
       
@@ -84,11 +88,25 @@ properties:
     name: max_reverb_level
     type: float
     range: [0.0, 1.0]
-    default: 1.0
+    default: 0.6
     doc_description: |
       The maximum amount of audio to be diverted to reverb sends, if any.
       
       Behavior is undefined if this property is ever less than {{"Lav_SOURCE_MIN_REVERB_LEVEL"|property}}.
+  Lav_SOURCE_OCCLUSION:
+    type: float
+    name: occlusion
+    range: [0.0, 1.0]
+    default: 0.0
+    doc_description: |
+      A scalar representing how occluded this source is.
+      
+      This property controls internal filters of the source that make occluded objects sound muffled.
+      A value of 1.0 is a fully occluded source, which will be all but silent; a value of 0.0 has no effect.
+      
+      It is extremely difficult to map occlusion to a physical quantity.
+      In the real world, occlusion depends on mass, density, molecular structure, and a huge number of other factors.
+      Libaudioverse therefore chooses to use this scalar quantity and to attempt to do the right thing.
 extra_functions:
   Lav_sourceNodeFeedEffect:
     doc_description: |
@@ -103,12 +121,13 @@ extra_functions:
 inputs:
   - [1, "The audio to enter the 3D environment."]
 outputs: null
-doc_name: simple source
+doc_name: source
 doc_description: |
   The source node allows the spatialization of sound that passes through it.
   Sources have one input which is mono, to which a node should be connected.
-  the audio from the input is spatialized according both to the source's properties and those on its environment, 
-  and passed directly to the environment.
+  The audio from the input is spatialized according both to the source's properties and those on its environment, and passed directly to the environment.
   Sources have no outputs.
   To hear a source, you must connect its environment to something instead.
   
+  Since the source communicates with the environment through a nonstandard mechanism, environments do not keep their sources alive.
+  If you are in a garbage collected language, failure to hold on to the source nodes will cause them to go silent.

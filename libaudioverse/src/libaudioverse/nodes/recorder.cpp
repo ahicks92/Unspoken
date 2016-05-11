@@ -1,9 +1,13 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
 
 #include <libaudioverse/libaudioverse.h>
 #include <libaudioverse/libaudioverse_properties.h>
+#include <libaudioverse/nodes/recorder.hpp>
 #include <libaudioverse/private/node.hpp>
 #include <libaudioverse/private/simulation.hpp>
 #include <libaudioverse/private/properties.hpp>
@@ -21,26 +25,6 @@ A copy of the GPL, as well as other important copyright and licensing informatio
 
 namespace libaudioverse_implementation {
 
-class RecorderNode: public Node {
-	public:
-	RecorderNode(std::shared_ptr<Simulation> simulation, int channels);
-	~RecorderNode();
-	void recordingThreadFunction();
-	virtual void process() override;
-	virtual void doMaintenance() override;
-	void startRecording(std::string path);
-	void stopRecording();
-	std::thread recording_thread;
-	powercores::ThreadsafeQueue<float*> available_buffers;
-	powercores::ThreadsafeQueue<float*> unwritten_buffers;
-	int buffer_size = 0;
-	int buffer_freeing_threshold =20; //If we ever get this far ahead, we free some buffers.
-	std::atomic_flag should_keep_recording;
-	FileWriter recording_to;
-	int channels = 0;
-	bool recording = false;
-};
-
 RecorderNode::RecorderNode(std::shared_ptr<Simulation> simulation, int channels): Node(Lav_OBJTYPE_RECORDER_NODE, simulation, channels, channels) {
 	appendInputConnection(0, channels);
 	appendOutputConnection(0, channels);
@@ -51,7 +35,9 @@ RecorderNode::RecorderNode(std::shared_ptr<Simulation> simulation, int channels)
 }
 
 std::shared_ptr<Node> createRecorderNode(std::shared_ptr<Simulation> simulation, int channels) {
-	return standardNodeCreation<RecorderNode>(simulation, channels);
+	auto ret = standardNodeCreation<RecorderNode>(simulation, channels);
+	simulation->registerNodeForMaintenance(ret);
+	return ret;
 }
 
 RecorderNode::~RecorderNode() {

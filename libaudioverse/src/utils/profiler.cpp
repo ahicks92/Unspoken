@@ -1,6 +1,9 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
 
 
 #include "time_helper.hpp"
@@ -16,8 +19,11 @@ A copy of the GPL, as well as other important copyright and licensing informatio
 
 #define BLOCK_SIZE 1024
 #define SR 44100
-#define ITERATIONS 50
+#define ITERATIONS 200
 float storage[BLOCK_SIZE*2] = {0};
+//This is a big block of data so we can profile buffers.
+#define BUFFER_SIZE 32768*4
+float buffer[BUFFER_SIZE] = {0.0f};
 
 #define ERRCHECK(x) do {\
 if((x) != Lav_ERROR_NONE) {\
@@ -48,8 +54,19 @@ LavError createCrossfader(LavHandle& sim, LavHandle& h) {
 	return Lav_ERROR_NONE;
 }
 
+LavError createBuffer(LavHandle sim, LavHandle& h) {
+	ERRCHECK(Lav_createBufferNode(sim, &h));
+	LavHandle b;
+	ERRCHECK(Lav_createBuffer(sim, &b));
+	ERRCHECK(Lav_bufferLoadFromArray(b, 44100, 4, BUFFER_SIZE/4, buffer));
+	ERRCHECK(Lav_nodeSetBufferProperty(h, Lav_BUFFER_BUFFER, b));
+	return Lav_ERROR_NONE;
+}
+
 std::tuple<std::string, int, std::function<std::vector<LavHandle>(LavHandle, int)>> to_profile[] = {
 ENTRY("sine", 1000, Lav_createSineNode(sim, &h)),
+ENTRY("Blit", 1000, Lav_createBlitNode(sim, &h)),
+ENTRY("4-channel buffer", 100, createBuffer(sim, h)),
 ENTRY("crossfading delay line", 1000, Lav_createCrossfadingDelayNode(sim, 0.1, 1, &h)),
 ENTRY("biquad", 1000, Lav_createBiquadNode(sim, 1, &h)),
 ENTRY("One-pole filter", 1000, Lav_createOnePoleFilterNode(sim, 1, &h)),
@@ -60,20 +77,19 @@ ENTRY("hard limiter", 1000, Lav_createHardLimiterNode(sim, 2, &h)),
 ENTRY("channel splitter", 1000, Lav_createChannelSplitterNode(sim, 10, &h)),
 ENTRY("channel merger", 1000, Lav_createChannelMergerNode(sim, 10, &h)),
 ENTRY("noise", 100, Lav_createNoiseNode(sim, &h)),
-ENTRY("square", 500, Lav_createSquareNode(sim, &h)),
 ENTRY("ringmod", 1000, Lav_createRingmodNode(sim, &h)),
 ENTRY("16x16 FDN", 1, Lav_createFeedbackDelayNetworkNode(sim, 1.0f, 16, &h)),
 ENTRY("32x32 FDN", 1, Lav_createFeedbackDelayNetworkNode(sim, 1.0f, 32, &h)),
 };
 int to_profile_size=sizeof(to_profile)/sizeof(to_profile[0]);
 
-void main(int argc, char** args) {
+int main(int argc, char** args) {
 	int threads = 1;
 	if(argc == 2) {
 		sscanf(args[1], "%i", &threads);
 		if(threads < 1) {
 			printf("Threads must be greater 1.\n");
-			return;
+			return 1;
 		}
 	}
 	printf("Running profile tests on %i threads\n", threads);
@@ -89,7 +105,7 @@ void main(int argc, char** args) {
 		if(times < threads) times = threads;
 		auto handles=std::get<2>(info)(sim, times);
 		for(auto h: handles) {
-			ERRCHECK(Lav_nodeSetIntProperty(h, Lav_NODE_STATE, Lav_NODESTATE_ALWAYS_PLAYING));
+			ERRCHECK(Lav_nodeConnectSimulation(h, 0));
 		}
 		float dur=timeit([&] () {
 			ERRCHECK(Lav_simulationGetBlock(sim, 2, 1, storage));
@@ -98,6 +114,7 @@ void main(int argc, char** args) {
 		float estimate = (BLOCK_SIZE/(float)SR)/dur*times;
 		printf("%f\n", estimate);
 		for(auto h: handles) {
+			ERRCHECK(Lav_nodeDisconnect(h, 0, 0, 0));
 			ERRCHECK(Lav_handleDecRef(h));
 		}
 		ERRCHECK(Lav_handleDecRef(sim));

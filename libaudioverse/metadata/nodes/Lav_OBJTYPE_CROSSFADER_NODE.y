@@ -8,7 +8,7 @@ properties:
     doc_description: |
       The input which the current crossfade is headed for.
       
-      When not crossfading, the meaning of the value of this property is meaningless.
+      When not crossfading, this property is meaningless.
   Lav_CROSSFADER_CURRENT_INPUT:
     name: current_input
     type: int
@@ -25,14 +25,6 @@ properties:
     default: 0
     doc_description: |
       True if we are crossfading, otherwise false.
-events:
-  Lav_CROSSFADER_FINISHED_EVENT:
-    name: finished
-    doc_description: |
-      Fires when a non-instantaneous crossfade finishes.
-      
-      This event is primarily used for optimization.
-      It should be used to unhook nodes that are no longer needed.
 extra_functions:
   Lav_crossfaderNodeCrossfade:
     doc_description: |
@@ -45,10 +37,14 @@ extra_functions:
     params:
       duration: The duration of the crossfade.
       input: The input to crossfade to.
+callbacks:  
+  finished:
+    doc_description: |
+      Called outside the audio thread when the currently scheduled crossfade finishes.
 inputs: constructor
 outputs:
   - [dynamic, "Depends on the channel count given to the constructor.", "The output of the crossfade."]
-name: crossfader
+doc_name: crossfader
 doc_description: |
   A crossfader is a node  which allows for selection of exactly one input.
   The selection can be changed by crossfading, a technique whereby the currently selected input is slowly faded out and the new one faded in.

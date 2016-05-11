@@ -22,29 +22,29 @@ extra_functions:
   Lav_firstOrderFilterNodeConfigureLowpass:
     doc_description: |
       Configure the filter as a first-order Butterworth lowpass.
-      This is equivalent to the {{"Lav_OBJTYPE_ONE_POLE_FILTER"|node}} lowpass configuration.
+      This is equivalent to the {{"Lav_OBJTYPE_ONE_POLE_FILTER_NODE"|node}} lowpass configuration.
     params:
       frequency: The {{"-3 DB"|codelit}} frequency. Must be between 0 and nyquist.
   Lav_firstOrderFilterNodeConfigureHighpass:
     doc_description: |
       Configure the filter as a highpass with a roll-off of {{"6 DB"|codelit}} per octave.
-      This is identical to the {{"Lav_OBJTYPE_ONE_POLE_NODE"|node}} highpass configuration.
+      This is identical to the {{"Lav_OBJTYPE_ONE_POLE_FILTER_NODE"|node}} highpass configuration.
     params:
       frequency: The {{"-3 DB"|codelit}} frequency. Must be between 0 and Nyquist.
   Lav_firstOrderFilterNodeConfigureAllpass:
-    doc_descrpition: |
+    doc_description: |
       Configure this node as an allpass.
-      You specify the {{"\frac{\pi}{2}"|latex}} frequency.
-      You get a filter with a phase of {{"\pi"|latex}} at DC and 0 at Nyquist.
+      You specify the {{"\\frac{\\pi}{2}"|latex}} frequency.
+      You get a filter with a phase of {{"\\pi"|latex}} at DC and 0 at Nyquist.
     params:
-      frequency: The frequency at which the filter has a phase of {{"\frac{\pi}{2}"|latex}}.  Must be between 0 and Nyquist.
+      frequency: The frequency at which the filter has a phase of {{"\\frac{\\pi}{2}"|latex}}.  Must be between 0 and Nyquist.
 inputs:
   - [constructor, "The signal to filter."]
 outputs:
   - [constructor, "The filtered signal."]
 doc_name: first order filter
 doc_description: |
-  A first order filter section, implementing the transfer function {{"H(Z) = \frac{B_0 + B_1 Z^{-1} }{1+A_0 Z^{-1} }"|latex}}
+  A first order filter section, implementing the transfer function {{"H(Z) = \\frac{B_0 + B_1 Z^{-1} }{1+A_0 Z^{-1} }"|latex}}
   
   This filter is not your friend unless you know DSP or have a specific goal in mind.
   Most applications will want  a {{"Lav_OBJTYPE_BIQUAD_NODE"|node}} or a {{"Lav_OBJTYPE_ONE_POLE_FILTER_NODE"|node}} instead.

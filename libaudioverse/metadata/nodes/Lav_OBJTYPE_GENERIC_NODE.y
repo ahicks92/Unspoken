@@ -8,18 +8,12 @@ properties:
     doc_description: |
       The node's state.  See the basics section in the Libaudioverse manual for details.
       The default is usually what you want.
-  Lav_NODE_AUTORESET:
-    name: autoreset
-    type: boolean
-    default: 1
-    doc_description: |
-      Every node has a reset function which does something specific to the node.
-      If this property is enabled, then changes to the inputs of this node will cause it to automatically reset.
   Lav_NODE_MUL:
     name: mul
     type: float
     default: 1.0
     range: [-INFINITY, INFINITY]
+    rate: a
     doc_description: |
       After this node processes, the value to which mul is set is used as a multiplier on the result.
       The most notable effect of this is to change the node's volume.
@@ -30,10 +24,9 @@ properties:
     type: float
     default: 0.0
     range: [-INFINITY, INFINITY]
+    rate: a
     doc_description: |
       After mul is applied, we add the value to which this property is set to the node's result.
-      The purpose of add is to be used with automation support: add provides a baseline for oscillators and other similar nodes
-      so that when connected to properties, we can make the value of this node vary between a specified minimum and maximum.
   Lav_NODE_CHANNEL_INTERPRETATION:
     name: channel_interpretation
     type: int
@@ -42,6 +35,9 @@ properties:
     doc_description: |
       How to treat channel count mismatches.
       The default is to apply mixing matrices when possible.
+      
+      If set to {{"Lav_CHANNEL_INTERPRETATION_SPEAKERS"|enum}}, mixing matrices are applied to inputs.
+      Otherwise, when set to {{"Lav_CHANNEL_INTERPRETATION_DISCRETE"|enum}}, they are not.
       
       This property is almost never needed.
 inputs: null

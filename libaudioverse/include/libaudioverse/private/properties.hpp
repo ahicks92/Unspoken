@@ -1,6 +1,9 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
 #pragma once
 #include <string>
 #include <vector>
@@ -76,7 +79,7 @@ class Property {
 	//The index of r1 must be strictly less than or equal to the index of r2.
 	//This condition may be lifted in future.
 	float getFloatValue(int i = 0);
-	void setFloatValue(float v, bool avoidCallbacks = false);
+	void setFloatValue(float v, bool avoidCallbacks = false, bool avoidAutomatorClear = false);
 	float getFloatDefault();
 	void setFloatDefault(float v);
 	float getFloatMin();
@@ -88,7 +91,7 @@ class Property {
 	//The index of r1 must be strictly less than or equal to the index of r2.
 	//This condition may be lifted in future.
 	double getDoubleValue(int i = 0);
-	void setDoubleValue(double v, bool avoidCallbacks = false);
+	void setDoubleValue(double v, bool avoidCallbacks = false, bool avoidAutomatorClear = false);
 	double getDoubleMin();
 	double getDoubleMax();
 	void setDoubleRange(double a, double b);
@@ -197,14 +200,13 @@ class Property {
 };
 
 
-
 //helper methods to quickly make properties.
-Property* createIntProperty(const char* name, int default, int min, int max);
-Property* createFloatProperty(const char* name, float default, float min, float max);
-Property* createDoubleProperty(const char* name, double default, double min, double max);
-Property* createFloat3Property(const char* name, float default[3]);
-Property* createFloat6Property(const char* name, float default[6]);
-Property* createStringProperty(const char* name, const char* default);
+Property* createIntProperty(const char* name, int defaultValue, int min, int max);
+Property* createFloatProperty(const char* name, float defaultValue, float min, float max);
+Property* createDoubleProperty(const char* name, double defaultValue, double min, double max);
+Property* createFloat3Property(const char* name, float defaultValue[3]);
+Property* createFloat6Property(const char* name, float defaultValue[6]);
+Property* createStringProperty(const char* name, const char* defaultValue);
 Property* createIntArrayProperty(const char* name, unsigned int minLength, unsigned int maxLength, unsigned int defaultLength, int minVal, int maxVal, int* defaultData);
 Property* createFloatArrayProperty(const char* name, unsigned int minLength, unsigned int maxLength, unsigned int defaultLength, float min, float max, float* defaultData);
 Property* createBufferProperty(const char* name);

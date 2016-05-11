@@ -11,6 +11,8 @@ import speech
 import controlTypes
 import time
 
+sys.path.append(os.path.join(os.path.dirname(__file__),'deps'))
+
 #this is a hack.
 #Normally, we would modify Libaudioverse to know about Unspoken and NVDA.
 #But if Windows sees a DLL is already loaded, it doesn't reload it.
@@ -18,12 +20,10 @@ import time
 #order is important.
 import ctypes
 file_directory = os.path.split(os.path.abspath(__file__))[0]
-libaudioverse_directory = os.path.join(file_directory, 'libaudioverse')
+libaudioverse_directory = os.path.join(file_directory, 'deps', 'libaudioverse')
 dll_hack = [ctypes.cdll.LoadLibrary(os.path.join(libaudioverse_directory, 'libsndfile-1.dll'))]
 dll_hack.append(ctypes.cdll.LoadLibrary(os.path.join(libaudioverse_directory, 'libaudioverse.dll')))
-#and another hack: we import enum first so that it's in sys.modules when libaudioverse tries.
-from . import enum
-sys.modules['enum'] = enum
+
 import libaudioverse
 libaudioverse.initialize()
 from . import mixer

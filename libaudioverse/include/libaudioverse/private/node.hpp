@@ -1,12 +1,15 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
 #pragma once
 #include "../libaudioverse.h"
 #include "properties.hpp"
-#include "events.hpp"
 #include "memory.hpp"
 #include "connections.hpp"
+#include "simulation.hpp"
 #include <map>
 #include <memory>
 #include <vector>
@@ -28,7 +31,7 @@ class PropertyBackrefComparer {
 
 
 /**Things all Libaudioverse nodes have.*/
-class Node: public ExternalObject, public Job {
+class Node: public Job {
 	public:
 	Node(int type, std::shared_ptr<Simulation> simulation, unsigned int numInputBuffers, unsigned int numOutputBuffers);
 	virtual ~Node();
@@ -43,6 +46,8 @@ class Node: public ExternalObject, public Job {
 	//equivalent to reading lav_NODE_STATE.
 	int getState();
 	void setState(int newState);
+	void stateChanged();
+	
 	
 	//public view of connections.
 	virtual int getInputConnectionCount();
@@ -83,13 +88,7 @@ class Node: public ExternalObject, public Job {
 	//Does some cleanup and the like.
 	//This is also an override point for subclasses that may need to do cleanup periodically in order to remain performant; in that case, they *must* call the base. Or else.
 	virtual void doMaintenance();
-	//this is called at some point in the processing logic which is guaranteed to be before this node's parents are processed and after the device is locked.
-	//additionally, a parent will have its willProcessParents called after this node.
-	//that is, nothing else will touch this node but the mixer thread, and the next thing to be called (at some point in future) is willProcess.
-	//the default does nothing.
-	//Do not change connections.
-	virtual void willProcessParents();
-	//Called after the simulation is locked but before ticking, in some arbetrary order.
+	//Called after the simulation is locked but before ticking, in some arbetrary order. We must be registered for this.
 	//It is safe to change connections here.
 	virtual void willTick();
 	
@@ -104,9 +103,7 @@ class Node: public ExternalObject, public Job {
 	void removePropertyBackref(int ourProperty, std::shared_ptr<Node> toNode, int toProperty);
 	//call pred on all the properties that immediately forward to which.
 	void visitPropertyBackrefs(int which, std::function<void(Property&)> pred);
-	
-	//event helper methods.
-	Event& getEvent(int which);
+
 
 	//meet the lockable concept.
 	//Warning: these aren't virtual because they're just so that our macro works; all locking still forwards to devices.
@@ -120,15 +117,13 @@ class Node: public ExternalObject, public Job {
 	virtual void resize(int newInputCount, int newOutputCount);
 
 	//Conform to Job.
-	virtual void visitDependencies(std::function<void(std::shared_ptr<Job>&)> &pred) override;
-	virtual void willExecuteDependencies();
 	virtual void execute();
 
-	//This is the actual implementation of visitDependencies.
-	//visitDependencies will only call this function if the state is unpaused.
-	//This exists for cycle detection.
-	virtual void visitDependenciesUnconditional(std::function<void(std::shared_ptr<Job>&)> &pred);
+	//True if we're paused.
+	bool canCull() override;
 	
+	//Various optimizations that subclasses can enable.
+	void setShouldZeroOutputBuffers(bool v);
 	protected:
 	std::shared_ptr<Simulation> simulation = nullptr;
 	std::map<int, Property> properties;
@@ -137,7 +132,6 @@ class Node: public ExternalObject, public Job {
 	//These are the back references, used for property callbacks.
 	std::map<int, std::set<std::tuple<std::weak_ptr<Node>, int>, PropertyBackrefComparer>> forwarded_property_backrefs;
 	
-	std::map<int, Event> events;
 	std::vector<float*> input_buffers;
 	std::vector<float*> output_buffers;
 	std::vector<std::shared_ptr<InputConnection>> input_connections;
@@ -151,35 +145,11 @@ class Node: public ExternalObject, public Job {
 	//we are never allowed to copy.
 	Node(const Node&) = delete;
 	Node& operator=(const Node&) = delete;
-};
-
-/*needed for things that wish to encapsulate and manage nodes that the public API isn't supposed to see.
-Usage: append output connections as normal and configure as normal.
-The subgraph node forwards most calls onto the current output object, including those for getting output arrays. Consequently, the subgraph node has the same number of output buffers as the output object-and the output object may be changed.
-The properties mul and (todo) add are forwarded onto the output node before every block.
-Changing the input node is defined behavior: it will break horribly and unpredictably.
-Changing the output node is safe so long as the connections on the subgraph are reconfigured, same as for any other resize.*/
-class SubgraphNode: public Node {
-	public:
-	SubgraphNode(int type, std::shared_ptr<Simulation> simulation);
-	virtual void setInputNode(std::shared_ptr<Node> node);
-	virtual void setOutputNode(std::shared_ptr<Node> node);
-	//these all forward onto the input node.
-	int getInputConnectionCount() override;
-	std::shared_ptr<InputConnection> getInputConnection(int which) override;
-	//these forward onto the output node, making connections to the subgraph magically work.
-	int getOutputBufferCount() override;
-	float** getOutputBufferArray() override;
-
-	//Our dependency is our single output node.
-	void visitDependenciesUnconditional(std::function<void(std::shared_ptr<Job>&)> &pred) override;
-
-	//Override tick because we can't try to use connections.
-	//We don't have proper input buffers, default tick will override who knows what.
-	void tick() override;
 	
-	protected:
-	std::shared_ptr<Node> subgraph_input, subgraph_output;
+	//various optimization flags.
+	bool should_zero_output_buffers = true; //Enable/disable zeroing output buffers on tick if node is unpaused.
+	template<typename JobT, typename CallableT, typename... ArgsT>
+	friend void nodeVisitDependencies(JobT&& start, CallableT&& callable, ArgsT&&... args);
 };
 
 /**This is the creation template for a node.

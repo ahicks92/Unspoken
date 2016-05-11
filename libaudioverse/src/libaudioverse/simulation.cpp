@@ -1,6 +1,9 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
 #include <libaudioverse/libaudioverse.h>
 #include <libaudioverse/private/simulation.hpp>
 #include <libaudioverse/private/node.hpp>
@@ -26,7 +29,7 @@ A copy of the GPL, as well as other important copyright and licensing informatio
 
 namespace libaudioverse_implementation {
 
-Simulation::Simulation(unsigned int sr, unsigned int blockSize, unsigned int mixahead): ExternalObject(Lav_OBJTYPE_SIMULATION) {
+Simulation::Simulation(unsigned int sr, unsigned int blockSize, unsigned int mixahead): Job(Lav_OBJTYPE_SIMULATION) {
 	if(blockSize%4 || blockSize== 0) ERROR(Lav_ERROR_RANGE, "Block size must be a nonzero multiple of 4."); //only afe to have this be a multiple of four.
 	this->sr = (float)sr;
 	this->block_size = blockSize;
@@ -51,18 +54,19 @@ void Simulation::completeInitialization() {
 }
 
 Simulation::~Simulation() {
-	printf("Deleting simulation...\n");
 	//enqueue a task which will stop the background thread.
 	enqueueTask([]() {throw ThreadTerminationException();});
 	backgroundTaskThread.join();
 	delete planner;
-	printf("Simulation deleted.\n");
 }
 
 //Yes, this uses goto. Yes, goto is evil. We need a single point of exit.
 void Simulation::getBlock(float* out, unsigned int channels, bool mayApplyMixingMatrix) {
-	if(out == nullptr || channels == 0) goto end; //nothing to do.
-	if(block_callback) block_callback(outgoingObject(this->shared_from_this()), block_callback_time, block_callback_userdata);
+	if(out == nullptr || channels == 0) {
+		memset(out, 0, sizeof(float)*channels*block_size);
+		goto end;
+	}
+	if(block_callback) block_callback(outgoingObject(this->shared_from_this()), getCurrentTime()-block_callback_set_time, block_callback_userdata);
 	//configure our connection to the number of channels requested.
 	final_output_connection->reconfigure(0, channels);
 	//append buffers to the final_outputs vector until it's big enough.
@@ -81,19 +85,25 @@ void Simulation::getBlock(float* out, unsigned int channels, bool mayApplyMixing
 	final_output_connection->addNodeless(&final_outputs[0], true);
 	//interleave the samples.
 	interleaveSamples(channels, block_size, channels, &final_outputs[0], out);
-	block_callback_time +=block_size/sr;
 	end:
+	time +=block_size/sr;
 	int maintenance_count=maintenance_start;
-	for(auto &i: nodes) {
-		auto i_s=i.lock();
-		if(i_s == nullptr) continue;
+	filterWeakPointers(maintenance_nodes, [&](std::shared_ptr<Node> &i_s) {
 		if(maintenance_count % maintenance_rate== 0) i_s->doMaintenance();
 		maintenance_count++;
-	}
+	});
 	maintenance_start++;
 	//and ourselves.
 	if(maintenance_start%maintenance_rate == 0) doMaintenance();
 	tick_count ++;
+	//Finally, we have to call any scheduled callbacks for this block.
+	filter(scheduled_callbacks, [&](auto item, double t) {
+		if(t >= item.first) {
+			item.second();
+			return false; //to kill.
+		}
+		else return true; //to keep.
+	}, getCurrentTime());
 }
 
 void Simulation::doMaintenance() {
@@ -101,9 +111,13 @@ void Simulation::doMaintenance() {
 	killDeadWeakPointers(will_tick_nodes);
 }
 
-void Simulation::setOutputDevice(int index, int channels, float minLatency, float startLatency, float maxLatency) {
+void Simulation::setOutputDevice(int index, int channels) {
 	if(index < -1) ERROR(Lav_ERROR_RANGE, "Index -1 is default; all other negative numbers are invalid.");
-	auto factory = getOutputDeviceFactory();
+	if(output_device) {
+		output_device->stop();
+	}
+	std::lock_guard<std::recursive_mutex> g(mutex);
+	auto &factory = getOutputDeviceFactory();
 	if(factory == nullptr) ERROR(Lav_ERROR_CANNOT_INIT_AUDIO, "Failed to get output device factory.");
 	auto sptr = std::static_pointer_cast<Simulation>(shared_from_this());
 	std::weak_ptr<Simulation> wptr(sptr);
@@ -116,15 +130,13 @@ void Simulation::setOutputDevice(int index, int channels, float minLatency, floa
 			strong->getBlock(buffer, channels);
 		}
 	};
-	std::shared_ptr<audio_io::OutputDevice> dev;
 	try {
-		dev =factory->createDevice(cb, index, channels, getSr(), getBlockSize(), minLatency, startLatency, maxLatency);
-		if(dev == nullptr) ERROR(Lav_ERROR_CANNOT_INIT_AUDIO, "Device could not be created.");
+		output_device =factory->createDevice(cb, index, channels, getSr(), getBlockSize(), 0.0, 0.1, 0.2);
+		if(output_device == nullptr) ERROR(Lav_ERROR_CANNOT_INIT_AUDIO, "Device could not be created.");
 	}
 	catch(std::exception &e) {
 		ERROR(Lav_ERROR_CANNOT_INIT_AUDIO, e.what());
 	}
-	output_device=dev;
 }
 
 void Simulation::clearOutputDevice() {
@@ -145,13 +157,24 @@ LavError Simulation::stop() {
 	return Lav_ERROR_NONE;
 }
 
-LavError Simulation::associateNode(std::shared_ptr<Node> node) {
+void Simulation::associateNode(std::shared_ptr<Node> node) {
 	nodes.insert(std::weak_ptr<Node>(node));
-	return Lav_ERROR_NONE;
 }
 
 void Simulation::registerNodeForWillTick(std::shared_ptr<Node> node) {
 	will_tick_nodes.insert(node);
+}
+
+void Simulation::registerNodeForAlwaysPlaying(std::shared_ptr<Node> which) {
+	always_playing_nodes.insert(which);
+}
+
+void Simulation::unregisterNodeForAlwaysPlaying(std::shared_ptr<Node> which) {
+	always_playing_nodes.erase(which);
+}
+
+void Simulation::registerNodeForMaintenance(std::shared_ptr<Node> which) {
+	maintenance_nodes.insert(which);
 }
 
 void Simulation::enqueueTask(std::function<void(void)> cb) {
@@ -171,9 +194,9 @@ void Simulation::backgroundTaskThreadFunction() {
 	}
 }
 
-void Simulation::setBlockCallback(LavBlockCallback callback, void* userdata) {
+void Simulation::setBlockCallback(LavTimeCallback callback, void* userdata) {
 	block_callback = callback;
-	block_callback_time = 0.0;
+	block_callback_set_time = getCurrentTime();
 	block_callback_userdata=userdata;
 }
 
@@ -200,23 +223,16 @@ int Simulation::getThreads() {
 	return threads;
 }
 
-//Conform to job:
-void Simulation::visitDependencies(std::function<void(std::shared_ptr<Job>&)> &pred) {
-	for(auto &i: final_output_connection->getConnectedNodes()) {
-		auto n = std::dynamic_pointer_cast<Job>(i->shared_from_this());
-		if(n) pred(n);
-	}
-	for(auto i: nodes) {
-		auto n = i.lock();
-		if(n && n->getState() == Lav_NODESTATE_ALWAYS_PLAYING) {
-			auto j = std::static_pointer_cast<Job>(n);
-			pred(j);
-		}
-	}
-}
-
 void Simulation::invalidatePlan() {
 	planner->invalidatePlan();
+}
+
+double Simulation::getCurrentTime() {
+	return time;
+}
+
+void Simulation::scheduleCall(double when, std::function<void(void)> func) {
+	scheduled_callbacks.insert(std::make_pair(getCurrentTime()+when, func));
 }
 
 //begin public API
@@ -253,11 +269,26 @@ Lav_PUBLIC_FUNCTION LavError Lav_simulationGetSr(LavHandle simulationHandle, int
 	PUB_END
 }
 
-Lav_PUBLIC_FUNCTION LavError Lav_simulationSetOutputDevice(LavHandle simulationHandle, int index, int channels, float minLatency, float startLatency, float maxLatency) {
+Lav_PUBLIC_FUNCTION LavError Lav_simulationSetOutputDevice(LavHandle simulationHandle, const char* device, int channels) {
 	PUB_BEGIN
 	auto sim = incomingObject<Simulation>(simulationHandle);
-	LOCK(*sim);
-	sim->setOutputDevice(index, channels, minLatency, startLatency, maxLatency);
+	int index;
+	auto device_string = std::string(device);
+	if(device_string == "default") {
+		index = -1;
+	}
+	else {
+		size_t processed;
+		try {
+			index = std::stoi(device_string, &processed, 10);
+		}
+		catch(...) {
+			ERROR(Lav_ERROR_NO_SUCH_DEVICE, "No such device.");
+		}
+		if(processed == 0) {ERROR(Lav_ERROR_NO_SUCH_DEVICE, "Identifier string is invalid.");}
+	}
+	//This is threadsafe and needs to be entered properly so it can make sure we dont' deadlock in audio_io.
+	sim->setOutputDevice(index, channels);
 	PUB_END
 }
 
@@ -283,7 +314,7 @@ Lav_PUBLIC_FUNCTION LavError Lav_simulationUnlock(LavHandle simulationHandle) {
 	PUB_END
 }
 
-Lav_PUBLIC_FUNCTION LavError Lav_simulationSetBlockCallback(LavHandle handle, LavBlockCallback callback, void* userdata) {
+Lav_PUBLIC_FUNCTION LavError Lav_simulationSetBlockCallback(LavHandle handle, LavTimeCallback callback, void* userdata) {
 	PUB_BEGIN
 	incomingObject<Simulation>(handle)->setBlockCallback(callback, userdata);
 	PUB_END
@@ -311,6 +342,24 @@ Lav_PUBLIC_FUNCTION LavError Lav_simulationGetThreads(LavHandle simulationHandle
 	auto sim = incomingObject<Simulation>(simulationHandle);
 	LOCK(*sim);
 	*destination = sim->getThreads();
+	PUB_END
+}
+
+Lav_PUBLIC_FUNCTION LavError Lav_simulationCallIn(LavHandle simulationHandle, double when, int inAudioThread, LavTimeCallback cb, void* userdata) {
+	PUB_BEGIN
+	auto sim = incomingObject<Simulation>(simulationHandle);
+	std::weak_ptr<Simulation> simWeak = sim;
+	auto wrapped_callback = [simWeak, userdata, cb] () {
+		auto simStrong = simWeak.lock();
+		//This should always be a valid weak pointer, but we check here just in case.
+		if(simStrong) {
+			double t = simStrong->getCurrentTime();
+			cb(outgoingObject(simStrong), t, userdata);
+		}
+	};
+	LOCK(*sim);
+	if(inAudioThread) sim->scheduleCallInAudioThread(when, wrapped_callback);
+	else sim->scheduleCallOutsideAudioThread(when, wrapped_callback);
 	PUB_END
 }
 

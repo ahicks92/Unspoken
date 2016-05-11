@@ -1,6 +1,9 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
 
 /**Handles functionality common to all objects: linking, allocating, and freeing, as well as parent-child relationships.*/
 #include <libaudioverse/libaudioverse.h>
@@ -18,28 +21,30 @@ A copy of the GPL, as well as other important copyright and licensing informatio
 #include <memory>
 #include <vector>
 
-
 namespace libaudioverse_implementation {
 
 OutputConnection::OutputConnection(std::shared_ptr<Simulation> simulation, Node* node, int start, int count) {
-	this->simulation = simulation;
 	this->node= node;
 	this->start =start;
 	this->count = count;
+	this->block_size = simulation->getBlockSize();
 }
 
 void OutputConnection::add(int inputBufferCount, float** inputBuffers, bool shouldApplyMixingMatrix) {
 	//Ticking is now handled by the planner, see planner.cpp.
+	//If the node is paused, we are going to output zeros, so skip.
+	if(node->getState() == Lav_NODESTATE_PAUSED) return;
 	//get the array of outputs from our node.
 	float** outputArray=node->getOutputBufferArray();
 	//it is the responsibility of our node to keep us configured, so we assume what info we have is accurate. If it is not, that is the fault of our node.
-	if(shouldApplyMixingMatrix) {
+	///if they're the same, we fall through because we can do better with our sse kernels than audio_io.
+	if(shouldApplyMixingMatrix && inputBufferCount != count ) {
 		//Remix, but don't zero first.
-		audio_io::remixAudioUninterleaved(simulation->getBlockSize(), count, outputArray+start, inputBufferCount, inputBuffers, false);
+		audio_io::remixAudioUninterleaved(block_size, count, outputArray+start, inputBufferCount, inputBuffers, false);
 	}
 	else { //copy and drop.
 		int channelsToAdd =std::min(count, inputBufferCount);
-		for(int i=0; i < channelsToAdd; i++) additionKernel(simulation->getBlockSize(), outputArray[i+start], inputBuffers[i], inputBuffers[i]);
+		for(int i=0; i < channelsToAdd; i++) additionKernel(block_size, outputArray[i+start], inputBuffers[i], inputBuffers[i]);
 	}
 }
 
@@ -73,7 +78,7 @@ Node* OutputConnection::getNode() {
 
 std::vector<Node*> OutputConnection::getConnectedNodes() {
 	std::vector<Node*> retval;
-	filterWeakPointers(connected_to, [&](std::shared_ptr<InputConnection> conn) {
+	filterWeakPointers(connected_to, [&](std::shared_ptr<InputConnection> &conn) {
 		auto n = conn->getNode();
 		//The simulation uses an input connection without a node, so we need to protect against this case.
 		if(n) retval.push_back(n);
@@ -82,10 +87,10 @@ std::vector<Node*> OutputConnection::getConnectedNodes() {
 }
 
 InputConnection::InputConnection(std::shared_ptr<Simulation> simulation, Node* node, int start, int count) {
-	this->simulation = simulation;
 	this->node= node;
 	this->start=start;
 	this->count = count;
+	this->block_size = simulation->getBlockSize();
 }
 
 void InputConnection::add(bool shouldApplyMixingMatrix) {
@@ -116,7 +121,7 @@ void InputConnection::disconnectHalf(std::shared_ptr<OutputConnection> connectio
 
 void InputConnection::forgetConnection(OutputConnection* which) {
 	filter(connected_to, [](decltype(connected_to)::value_type &k, OutputConnection* t)->bool {
-		return k.first.get() == t;
+		return k.first.get() != t;
 	}, which);
 }
 

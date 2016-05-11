@@ -1,6 +1,9 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
 
 #include <libaudioverse/libaudioverse.h>
 #include <libaudioverse/private/file.hpp>
@@ -11,6 +14,8 @@ A copy of the GPL, as well as other important copyright and licensing informatio
 #include <libaudioverse/private/error.hpp>
 #include <libaudioverse/private/macros.hpp>
 #include <algorithm>
+#include <atomic>
+
 
 namespace libaudioverse_implementation {
 
@@ -24,7 +29,6 @@ std::shared_ptr<Buffer> createBuffer(std::shared_ptr<Simulation>simulation) {
 
 Buffer::~Buffer() {
 	if(data) delete[] data;
-	if(remixing_workspace) freeArray(remixing_workspace);
 }
 
 std::shared_ptr<Simulation> Buffer::getSimulation() {
@@ -45,55 +49,39 @@ int Buffer::getChannels() {
 
 void Buffer::loadFromArray(int sr, int channels, int frames, float* inputData) {
 	int simulationSr= (int)simulation->getSr();
+	if(data) {
+		delete[] data;
+		data = nullptr;
+	}
 	staticResamplerKernel(sr, simulationSr, channels, frames, inputData, &(this->frames), &data);
 	if(data==nullptr) ERROR(Lav_ERROR_MEMORY);
-	data_end=data+this->frames*channels;
 	this->channels = channels;
-}
-
-int Buffer::writeData(int startFrame, int channels, int frames, float** outputs) {
-	//Figure out how much we can write.
-	int canWrite = std::max(startFrame-this->frames, 0);
-	int willWrite = std::min(canWrite, frames);
-	if(willWrite == 0) return 0;
-	ensureRemixingWorkspace(channels*willWrite);
-	audio_io::remixAudioInterleaved(willWrite, this->channels, data+this->channels*startFrame, channels, remixing_workspace);
-	for(int i = 0; i < willWrite; i++) {
-		for(int chan = 0; chan < channels; chan++) {
-			outputs[chan][i] = remixing_workspace[chan*channels+i];
+	if(this->channels == 1) return; //It's already uninterleaved.
+	//Uninterleave the data and delete the old one.
+	float* newData = new float[this->channels*this->frames];
+	for(int ch = 0; ch < this->channels; ch++) {
+		for(int i = 0; i < this->frames; i++) {
+			newData[ch*this->frames+i] = data[this->channels*i+ch];
 		}
 	}
-	return willWrite;
+	delete[] data;
+	data = newData;
 }
 
 float Buffer::getSample(int frame, int channel) {
-	return data[frame*channels+channel];
+	return data[frames*channel+frame];
 }
 
-float Buffer::getSampleWithMixingMatrix(int frame, int channel, int maxChannels) {
-	if(frame > this->frames) return 0.0f;
-	ensureRemixingWorkspace(maxChannels);
-	audio_io::remixAudioInterleaved(1, this->channels, data+frame*this->channels, maxChannels, remixing_workspace);
-	return remixing_workspace[channel];
+float* Buffer::getPointer(int frame, int channel) {
+	return data+channel*frames+frame;
 }
 
 void Buffer::normalize() {
 	float min = *std::min_element(data, data+channels*frames);
 	float max = *std::max_element(data, data+channels*frames);
-	float normfactor = std::max(abs(min), abs(max));
+	float normfactor = std::max(fabs(min), fabs(max));
 	normfactor = 1.0f/normfactor;
 	scalarMultiplicationKernel(channels*frames, normfactor, data, data);
-}
-
-void Buffer::ensureRemixingWorkspace(int length) {
-	if(remixing_workspace_length >= length) return;
-	else {
-		if(remixing_workspace) {
-			freeArray(remixing_workspace);
-			remixing_workspace = nullptr;
-		}
-		remixing_workspace = allocArray<float>(length);
-	}
 }
 
 void Buffer::lock() {
@@ -102,6 +90,20 @@ void Buffer::lock() {
 
 void Buffer::unlock() {
 	simulation->unlock();
+}
+
+void Buffer::incrementUseCount() {
+	use_count.fetch_add(1);
+}
+
+void Buffer::decrementUseCount() {
+	use_count.fetch_add(-1);
+}
+
+void Buffer::throwIfInUse() {
+	if(use_count.load()) {
+		ERROR(Lav_ERROR_BUFFER_IN_USE, "You cannot modify buffers while something is using their data.");
+	}
 }
 
 //begin public api
@@ -130,6 +132,7 @@ Lav_PUBLIC_FUNCTION LavError Lav_bufferLoadFromFile(LavHandle bufferHandle, cons
 	f.readAll(data);
 	{
 		LOCK(*buff);
+		buff->throwIfInUse();
 		buff->loadFromArray(f.getSr(), f.getChannelCount(), f.getSampleCount()/f.getChannelCount(), data);
 	}
 	freeArray(data);
@@ -140,6 +143,7 @@ Lav_PUBLIC_FUNCTION LavError Lav_bufferLoadFromArray(LavHandle bufferHandle, int
 	PUB_BEGIN
 	auto buff=incomingObject<Buffer>(bufferHandle);
 	LOCK(*buff);
+	buff->throwIfInUse();
 	buff->loadFromArray(sr, channels, frames, data);
 	PUB_END
 }
@@ -148,6 +152,7 @@ Lav_PUBLIC_FUNCTION LavError Lav_bufferNormalize(LavHandle bufferHandle) {
 	PUB_BEGIN
 	auto b = incomingObject<Buffer>(bufferHandle);
 	LOCK(*b);
+	b->throwIfInUse();
 	b->normalize();
 	PUB_END
 }

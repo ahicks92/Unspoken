@@ -1,6 +1,9 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
 
 /**Read an hrtf file into a HrtfData and compute left and right channel HRIR coefficients from an angle.*/
 #include <stdlib.h>
@@ -15,10 +18,20 @@ A copy of the GPL, as well as other important copyright and licensing informatio
 #include <libaudioverse/private/kernels.hpp>
 #include <libaudioverse/private/data.hpp>
 #include <libaudioverse/private/memory.hpp>
+#include <libaudioverse/private/utf8.hpp>
+#include <powercores/thread_local_variable.hpp>
+#include <boost/iostreams/device/mapped_file.hpp>
+#include <boost/filesystem.hpp>
+#include <boost/filesystem/fstream.hpp>
 #include <math.h>
+#include <kiss_fftr.h>
 #include <memory>
 #include <algorithm>
-#include <kiss_fftr.h>
+#include <map>
+#include <thread>
+#include <tuple>
+#include <ios>
+#include <system_error>
 
 namespace libaudioverse_implementation {
 
@@ -37,9 +50,30 @@ void reverse_endianness(char* buffer, unsigned int count, unsigned int window) {
 //this makes sure that we aren't about to do something silently dangerous and tels us at compile time.
 static_assert(sizeof(float) == 4, "Sizeof float is not 4; cannot safely work with hrtfs");
 
+HrtfData::HrtfData():
+//We have to give the thread-local variables constructors and destructors.
+temporary_buffer1([&]() {
+	float** p = new float*;
+	*p = createTemporaryBuffer();
+	return p;
+},
+[&](float** p) {
+	freeTemporaryBuffer(*p);
+	delete p;
+}),
+temporary_buffer2([&] () {
+	float** p = new float*;
+	*p = createTemporaryBuffer();
+	return p;
+},
+[&](float** p) {
+	freeTemporaryBuffer(*p);
+	delete p;
+})
+{
+}
+
 HrtfData::~HrtfData() {
-	if(temporary_buffer1) freeArray(temporary_buffer1);
-	if(temporary_buffer2) freeArray(temporary_buffer2);
 	if(hrirs == nullptr) return; //we never loaded one.
 	for(int i = 0; i < elev_count; i++) {
 		//The staticResamplerKernel allocates with new[], not allocArray.
@@ -48,25 +82,6 @@ HrtfData::~HrtfData() {
 	}
 	delete[] hrirs;
 	delete[] azimuth_counts;
-	freeArray(fft_time_data);
-	freeArray(fft_data);
-	kiss_fftr_free(fft);
-	kiss_fftr_free(ifft);
-}
-
-void HrtfData::linearPhase(float* buffer) {
-	//Note that this is in effect circular convolution with a truncation.
-	std::copy(buffer, buffer+hrir_length, fft_time_data);
-	std::fill(fft_time_data+hrir_length, fft_time_data+hrir_length*2, 0.0f);
-	kiss_fftr(fft, fft_time_data, fft_data);
-	for(int i = 0; i < hrir_length+1; i++) {
-		fft_data[i].r = cabs(fft_data[i].r, fft_data[i].i);
-		fft_data[i].i = 0.0f;
-	}
-	kiss_fftri(ifft, fft_data, fft_time_data);
-	//Apply the downscaling that kissfft requires, otherwise this is too loud.
-	//Also accomplish copying back to the starting piont.
-	scalarMultiplicationKernel(hrir_length, 1.0f/(2*hrir_length), fft_time_data, buffer);
 }
 
 int HrtfData::getLength() {
@@ -74,22 +89,18 @@ int HrtfData::getLength() {
 }
 
 void HrtfData::loadFromFile(std::string path, unsigned int forSr) {
-	//first, load the file if we can.
-	FILE *fp = fopen(path.c_str(), "rb");
-	if(fp == nullptr) ERROR(Lav_ERROR_FILE, std::string("Could not find HRTF file ")+path);
-	size_t size = 0;
-	fseek(fp, 0, SEEK_END);
-	size = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
-
-	//Okay, load everything.
-	char* data = new char[size];
-
-	//do the read.
-	size_t read;
-	read = fread(data, 1, size, fp);
-	loadFromBuffer(read, data, forSr);
-	delete[] data;
+	try {
+		auto p = boost::filesystem::path(utf8ToWide(path));
+		boost::iostreams::mapped_file map(p);
+		loadFromBuffer(map.size(), map.data(), forSr);
+		map.close();
+	}
+	catch(std::ios_base::failure &e) {
+		//We can't check to see why because at least Debian's GCC
+		//doesn't derive std::ios_base::failure from std::system_error.
+		//Consider using boost to find out why.
+		ERROR(Lav_ERROR_FILE, "Could not open HRTF file.");
+	}
 }
 
 void HrtfData::loadFromDefault(unsigned int forSr) {
@@ -100,20 +111,20 @@ void HrtfData::loadFromDefault(unsigned int forSr) {
 #define convf(b) safeConvertMemory<float>*(b)
 
 void HrtfData::loadFromBuffer(unsigned int length, char* buffer, unsigned int forSr) {
-	//we now handle endianness.
-	int32_t endianness_marker =convi(buffer);
-	if(endianness_marker != 1) reverse_endianness(buffer, length, 4);
-	//read it again; if it is still not 1, something has gone badly wrong.
-	endianness_marker = convi(buffer);
-	if(endianness_marker != 1) ERROR(Lav_ERROR_HRTF_INVALID, "Could not correct endianness for this architecture.");
-
 	char* iterator = buffer;
 	const unsigned int window_size = 4;
-
-	//read the header information.
-	iterator += window_size;//skip the endianness marker, which is handled above.
+	//Skip the uuid. We will use this in future.
+	iterator+=16;
+	//we now handle endianness.
+	int32_t endianness_marker =convi(iterator);
+	if(endianness_marker != 1) reverse_endianness(iterator, length-16, 4); //-16 because of uuid.
+	//read it again; if it is still not 1, something has gone badly wrong.
+	endianness_marker = convi(iterator);
+	if(endianness_marker != 1) ERROR(Lav_ERROR_HRTF_INVALID, "Could not correct endianness for this architecture.");
+	iterator += window_size;
+	
+	//Get the header info.
 	samplerate = convi(iterator);
-
 	iterator += window_size;
 	hrir_count = convi(iterator);
 	iterator += window_size;
@@ -166,24 +177,13 @@ void HrtfData::loadFromBuffer(unsigned int length, char* buffer, unsigned int fo
 	hrir_length = final_hrir_length;
 	samplerate = forSr;
 	freeArray(tempBuffer);
-
-	if(temporary_buffer1) freeArray(temporary_buffer1);
-	if(temporary_buffer2) freeArray(temporary_buffer2);
-	temporary_buffer1 = allocArray<float>(hrir_length);
-	temporary_buffer2 = allocArray<float>(hrir_length);
-	
-	//stuff for linear phase filters.
-	fft_time_data = allocArray<float>(hrir_length*2);
-	fft_data = allocArray<kiss_fft_cpx>(hrir_length+1); //half the bins, plus dc.
-	fft = kiss_fftr_alloc(hrir_length*2, 0, nullptr, nullptr);
-	ifft = kiss_fftr_alloc(hrir_length*2, 1, nullptr, nullptr);
 }
 
 //a complete HRTF for stereo is two calls to this function.
 //some final preparation is done afterwords.
 //This is very complicated, thus the heavy commenting.
 //todo: can this be made simpler?
-void HrtfData::computeCoefficientsMono(float elevation, float azimuth, float* out, bool linphase) {
+void HrtfData::computeCoefficientsMono(float elevation, float azimuth, float* out) {
 	//clamp the elevation.
 	if(elevation < min_elevation) {elevation = (float)min_elevation;}
 	else if(elevation > max_elevation) {elevation = (float)max_elevation;}
@@ -232,32 +232,97 @@ void HrtfData::computeCoefficientsMono(float elevation, float azimuth, float* ou
 		azimuthIndex2 = ringmodi(azimuthIndex2, azimuthCount);
 
 		//this is probably the only part of this that can't go wrong, assuming the above calculations are all correct.  Interpolate between the two azimuths.
-		if(linphase == false) {
-			for(int j = 0; j < hrir_length; j++) {
-				out[j] += elevationWeights[i]*(azimuthWeight1*azimuths[azimuthIndex1][j]+azimuthWeight2*azimuths[azimuthIndex2][j]);
-			}
-		}
-		//otherwise, the slower version; this involves copies and the fft.
-		else {
-			std::copy(azimuths[azimuthIndex1], azimuths[azimuthIndex1]+hrir_length, temporary_buffer1);
-			std::copy(azimuths[azimuthIndex2], azimuths[azimuthIndex2]+hrir_length, temporary_buffer2);
-			linearPhase(temporary_buffer1);
-			linearPhase(temporary_buffer2);
-			for(int j = 0; j < hrir_length; j++) {
-				out[j] += elevationWeights[i]*(temporary_buffer1[j]*azimuthWeight1+temporary_buffer2[j]*azimuthWeight2);
-			}
+		for(int j = 0; j < hrir_length; j++) {
+			out[j] += elevationWeights[i]*(azimuthWeight1*azimuths[azimuthIndex1][j]+azimuthWeight2*azimuths[azimuthIndex2][j]);
 		}
 	}
 }
 
-void HrtfData::computeCoefficientsStereo(float elevation, float azimuth, float *left, float* right, bool linphase) {
+void HrtfData::computeCoefficientsStereo(float elevation, float azimuth, float *left, float* right) {
 	//wrap azimuth to be > 0 and < 360.
 	azimuth = ringmodf(azimuth, 360.0f);
 	//the hrtf datasets are right ear coefficients.  Consequently, the right ear requires no changes.
-	computeCoefficientsMono(elevation, azimuth, right, linphase);
+	computeCoefficientsMono(elevation, azimuth, right);
 	//the left ear is found at an azimuth which is reflectred about 0 degrees.
 	azimuth = ringmodf(360-azimuth, 360.0f);
-	computeCoefficientsMono(elevation, azimuth, left, linphase);
+	computeCoefficientsMono(elevation, azimuth, left);
+}
+
+//Create and free buffers.
+//These are used by the thread locals.
+
+float* HrtfData::createTemporaryBuffer() {
+	return allocArray<float>(hrir_length);
+}
+
+void HrtfData::freeTemporaryBuffer(float* b) {
+	freeArray(b);
+}
+
+/**This helper class loads a UUID from the specified file handle.
+The first 16 bytes of every HRTF file are effectively unique, so we can use them to compare for caching.
+This only accounts for the file itself.  See below for the caching.*/
+class HrtfId {
+	public:
+	HrtfId(boost::filesystem::fstream &f);
+	char identity[16];
+};
+
+HrtfId::HrtfId(boost::filesystem::fstream &f) {
+	f.read(identity, 16);
+	if(f.gcount() != 16) ERROR(Lav_ERROR_HRTF_INVALID, "Could not read HRTF ID.");
+}
+
+bool operator==(const HrtfId& a, const HrtfId& b) {
+	return memcmp(a.identity, b.identity, 16) == 0;
+}
+
+bool operator<(const HrtfId &a, const HrtfId& b) {
+	return memcmp(a.identity, b.identity, 16) == -1;
+}
+
+bool operator>(const HrtfId& a, const HrtfId& b) {
+	return memcmp(a.identity, b.identity, 16) == 1;
+}
+
+std::map<int, std::shared_ptr<HrtfData>> *default_hrtf_cache;
+//Tuple of (forSr, HrtfId).
+std::map<std::tuple<int, HrtfId>, std::shared_ptr<HrtfData>> *file_hrtf_cache;
+std::mutex *hrtf_cache_mutex;
+
+void initializeHrtfCaches() {
+	default_hrtf_cache = new std::map<int, std::shared_ptr<HrtfData>>();
+	file_hrtf_cache = new std::map<std::tuple<int, HrtfId>, std::shared_ptr<HrtfData>>();
+	hrtf_cache_mutex = new std::mutex();
+}
+
+void shutdownHrtfCaches() {
+	delete hrtf_cache_mutex;
+	delete default_hrtf_cache;
+	delete file_hrtf_cache;
+}
+
+std::shared_ptr<HrtfData> createHrtfFromString(std::string path, int forSr) {
+	if(path == "default") {
+		std::lock_guard<std::mutex> guard(*hrtf_cache_mutex);
+		if(default_hrtf_cache->count(forSr)) return default_hrtf_cache->at(forSr);
+		auto h = std::make_shared<HrtfData>();
+		h->loadFromDefault(forSr);
+		(*default_hrtf_cache)[forSr] = h;
+		return h;
+	}
+	else {
+		boost::filesystem::fstream f(boost::filesystem::path(utf8ToWide(path)), boost::filesystem::fstream::in | boost::filesystem::fstream::binary);
+		if(f.good() == false) ERROR(Lav_ERROR_FILE, std::string("Could not find HRTF file ")+path);
+		auto identity = HrtfId(f);
+		f.close();
+		std::lock_guard<std::mutex> guard(*hrtf_cache_mutex);
+		if(file_hrtf_cache->count(std::make_tuple(forSr, identity))) return file_hrtf_cache->at(std::make_tuple(forSr, identity));
+		auto h = std::make_shared<HrtfData>();
+		h->loadFromFile(path, forSr);
+		(*file_hrtf_cache)[std::make_tuple(forSr, identity)] = h;
+		return h;
+	}
 }
 
 }

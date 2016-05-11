@@ -1,12 +1,15 @@
-/**Copyright (C) Austin Hicks, 2014
-This file is part of Libaudioverse, a library for 3D and environmental audio simulation, and is released under the terms of the Gnu General Public License Version 3 or (at your option) any later version.
-A copy of the GPL, as well as other important copyright and licensing information, may be found in the file 'LICENSE' in the root of the Libaudioverse repository.  Should this file be missing or unavailable to you, see <http://www.gnu.org/licenses/>.*/
-
+/**Copyright (C) Austin Hicks, 2014-2016
+This file is part of Libaudioverse, a library for realtime audio applications.
+This code is dual-licensed.  It is released under the terms of the Mozilla Public License version 2.0 or the Gnu General Public License version 3 or later.
+You may use this code under the terms of either license at your option.
+A copy of both licenses may be found in license.gpl and license.mpl at the root of this repository.
+If these files are unavailable to you, see either http://www.gnu.org/licenses/ (GPL V3 or later) or https://www.mozilla.org/en-US/MPL/2.0/ (MPL 2.0).*/
 #include <libaudioverse/3d/source.hpp>
 #include <libaudioverse/3d/environment.hpp>
+#include <libaudioverse/nodes/gain.hpp>
+#include <libaudioverse/nodes/buffer.hpp>
 #include <libaudioverse/private/properties.hpp>
 #include <libaudioverse/private/macros.hpp>
-#include <libaudioverse/private/creators.hpp>
 #include <libaudioverse/private/simulation.hpp>
 #include <libaudioverse/private/memory.hpp>
 #include <libaudioverse/private/hrtf.hpp>
@@ -20,23 +23,23 @@ A copy of the GPL, as well as other important copyright and licensing informatio
 #include <glm/gtx/transform.hpp>
 #include <algorithm>
 #include <vector>
+#include <set>
+#include <tuple>
+#include <memory>
 
 namespace libaudioverse_implementation {
 
-EnvironmentNode::EnvironmentNode(std::shared_ptr<Simulation> simulation, std::shared_ptr<HrtfData> hrtf): SubgraphNode(Lav_OBJTYPE_ENVIRONMENT_NODE, simulation)  {
+EnvironmentNode::EnvironmentNode(std::shared_ptr<Simulation> simulation, std::shared_ptr<HrtfData> hrtf): Node(Lav_OBJTYPE_ENVIRONMENT_NODE, simulation, 0, 8)  {
 	this->hrtf = hrtf;
 	int channels = getProperty(Lav_ENVIRONMENT_OUTPUT_CHANNELS).getIntValue();
-	output = createGainNode(simulation);
-	//We alwyas have 8 buffers, and alias them with the connections.
-	output->resize(8, 8);
-	output->appendInputConnection(0, channels);
-	output->appendOutputConnection(0, channels);
 	appendOutputConnection(0, channels);
-	setOutputNode(output);
+	//Allocate the 8 internal buffers.
+	for(int i = 0; i < 8; i++) source_buffers.push_back(allocArray<float>(simulation->getBlockSize()));
 	environment_info.world_to_listener_transform = glm::lookAt(
 		glm::vec3(0.0f, 0.0f, 0.0f),
 		glm::vec3(0.0f, 0.0f, -1.0f),
 		glm::vec3(0.0f, 1.0f, 0.0f));
+	setShouldZeroOutputBuffers(false);
 }
 
 std::shared_ptr<EnvironmentNode> createEnvironmentNode(std::shared_ptr<Simulation> simulation, std::shared_ptr<HrtfData> hrtf) {
@@ -45,12 +48,14 @@ std::shared_ptr<EnvironmentNode> createEnvironmentNode(std::shared_ptr<Simulatio
 	return ret;
 }
 
+EnvironmentNode::~EnvironmentNode() {
+	for(auto p: source_buffers) freeArray(p);
+}
+
 void EnvironmentNode::willTick() {
 	if(werePropertiesModified(this, Lav_ENVIRONMENT_OUTPUT_CHANNELS)) {
 		int channels = getProperty(Lav_ENVIRONMENT_OUTPUT_CHANNELS).getIntValue();
 		getOutputConnection(0)->reconfigure(0, channels);
-		output->getOutputConnection(0)->reconfigure(0, channels);
-		output->getInputConnection(0)->reconfigure(0, channels);
 	}
 	if(werePropertiesModified(this, Lav_3D_POSITION, Lav_3D_ORIENTATION)) {
 		//update the matrix.
@@ -73,17 +78,21 @@ void EnvironmentNode::willTick() {
 		m[3][1] = -posvec.y;
 		m[3][2] = -posvec.z;
 		environment_info.world_to_listener_transform = m;
-		//this debug code left in case this is still all broken.
-		/*printf("\n%f %f %f %f\n", m[0][0], m[1][0], m[2][0], m[3][0]);
-		printf("%f %f %f %f\n", m[0][1], m[1][1], m[2][1], m[3][1]);
-		printf("%f %f %f %f\n", m[0][2], m[1][2], m[2][2], m[3][2]);
-		printf("%f %f %f %f\n\n", m[0][3], m[1][3], m[2][3], m[3][3]);*/
 	}
+	environment_info.distance_model = getProperty(Lav_ENVIRONMENT_DISTANCE_MODEL).getIntValue();
+	if(environment_info.distance_model == Lav_DISTANCE_MODEL_DELEGATE) environment_info.distance_model = Lav_DISTANCE_MODEL_LINEAR;
+	environment_info.panning_strategy = getProperty(Lav_ENVIRONMENT_PANNING_STRATEGY).getIntValue();
+	if(environment_info.panning_strategy == Lav_PANNING_STRATEGY_DELEGATE) environment_info.panning_strategy = Lav_PANNING_STRATEGY_STEREO;
 	//give the new environment to the sources.
 	//this is a set of weak pointers.
 	filterWeakPointers(sources, [&](std::shared_ptr<SourceNode> &s) {
 		s->update(environment_info);
 	});
+	for(auto p: source_buffers) std::fill(p, p+block_size, 0.0f);
+}
+
+void EnvironmentNode::process() {
+	for(int i = 0; i < source_buffers.size(); i++) std::copy(source_buffers[i], source_buffers[i]+block_size, output_buffers[i]);
 }
 
 std::shared_ptr<HrtfData> EnvironmentNode::getHrtf() {
@@ -101,48 +110,63 @@ void EnvironmentNode::registerSourceForUpdates(std::shared_ptr<SourceNode> sourc
 	simulation->invalidatePlan();
 }
 
-void EnvironmentNode::visitDependenciesUnconditional(std::function<void(std::shared_ptr<Job>&)> &pred) {
-	SubgraphNode::visitDependenciesUnconditional(pred);
-	//Other dependencies: all our sources.
-	for(auto w: sources) {
-		auto n = w.lock();
-		if(n) {
-			auto j = std::static_pointer_cast<Job>(n);
-			pred(j);
-		}
-	}
-}
-
 void EnvironmentNode::playAsync(std::shared_ptr<Buffer> buffer, float x, float y, float z, bool isDry) {
 	auto e = std::static_pointer_cast<EnvironmentNode>(shared_from_this());
-	auto s = createSourceNode(simulation, e);
-	auto b = createBufferNode(simulation);
+	std::shared_ptr<Node> b;
+	std::shared_ptr<SourceNode> s;
+	bool fromCache = false;
+	if(play_async_source_cache.empty()) {
+		s = std::static_pointer_cast<SourceNode>(createSourceNode(simulation, e));
+		b = createBufferNode(simulation);
+	}
+	else {
+		std::tie(b, s) = play_async_source_cache.back();
+		play_async_source_cache.pop_back();
+		fromCache = true;
+	}
 	b->getProperty(Lav_BUFFER_BUFFER).setBufferValue(buffer);
-	b->connect(0, s, 0);
+	if(fromCache == false) b->connect(0, s, 0);
+	b->getProperty(Lav_BUFFER_POSITION).setDoubleValue(0.0);
 	s->getProperty(Lav_3D_POSITION).setFloat3Value(x, y, z);
-	if(isDry) {
+		if(isDry) {
 		for(int i = 0; i < effect_sends.size(); i++) {
-			std::static_pointer_cast<SourceNode>(s)->stopFeedingEffect(i);
+			s->stopFeedingEffect(i);
 		}
 	}
-	//The key here is that we capture the shared pointers, holding them until the event fires.
-	//When the event fires, we null the pointers we captured, and then everything schedules for deletion.
-	//We need the simulation shared pointer.
+	else {
+		//This might be from the cache and previously used as dry.
+		for(int i = 0; i < effect_sends.size(); i++) {
+			s->feedEffect(i);
+		}
+	}
+	if(fromCache) s->setState(Lav_NODESTATE_PLAYING);
 	auto simulation = this->simulation;
-	b->getEvent(Lav_BUFFER_END_EVENT).setHandler([b, e, s, simulation] (std::shared_ptr<Node> unused1, void* unused2) mutable {
+	//We've just done a bunch of stuff that invalidates the plan, so maybe we can squeeze in a bit more.
+	//If we update the source, it might cull.  We can then reset it to avoid HRTF crossfading.
+	s->update(environment_info);
+	s->reset(); //Avoid crossfading the hrtf.	
+	//This needs rewriting on whatever we replace events with.
+	/*b->getEvent(Lav_BUFFER_END_EVENT).setHandler([b, e, s, simulation] (std::shared_ptr<Node> unused1, void* unused2) mutable {
 		//Recall that events do not hold locks when fired.
-		//If we lock anything we delete here, it will not unlock properly.
 		//So lock the simulation.
 		LOCK(*simulation);
-		if(b) b->disconnect(0);
+		if(e->play_async_source_cache.size() < e->play_async_source_cache_limit) {
+			//Sleep the source, clear the buffer.
+			s->setState(Lav_NODESTATE_PAUSED);
+			b->getProperty(Lav_BUFFER_BUFFER).setBufferValue(nullptr);
+			e->play_async_source_cache.emplace_back(b, s);
+		}
+		else {
+			//Otherwise, let go.
+			s->isolate();
+			b->isolate();
+		}
+		//We let go of them so that they can delete if they want to.
+		//We don't want to extend lifetime guarantees into the event firing, as this event may remain set for a time.
 		b.reset();
 		s.reset();
 		e.reset();
-	});
-}
-
-std::shared_ptr<Node> EnvironmentNode::getOutputNode() {
-	return output;
+	});*/
 }
 
 int EnvironmentNode::addEffectSend(int channels, bool isReverb, bool connectByDefault) {
@@ -152,15 +176,15 @@ int EnvironmentNode::addEffectSend(int channels, bool isReverb, bool connectByDe
 	ERROR(Lav_ERROR_RANGE, "Reverb effects sends must have 4 channels.");
 	EffectSendConfiguration send;
 	send.channels = channels;
+	send.start = (int)source_buffers.size();
 	send.is_reverb = isReverb;
 	send.connect_by_default = connectByDefault;
 	//Resize the output gain node to have room, and append new connections.
-	int oldSize = output->getOutputBufferCount();
+	int oldSize = source_buffers.size();
 	int newSize = oldSize+send.channels;
-	output->resize(newSize, newSize);
-	output->appendInputConnection(oldSize, send.channels);
-	output->appendOutputConnection(oldSize, send.channels);
+	resize(0, newSize);
 	appendOutputConnection(oldSize, send.channels);
+	for(int i = 0; i < send.channels; i++) source_buffers.push_back(allocArray<float>(simulation->getBlockSize()));
 	int index = effect_sends.size();
 	effect_sends.push_back(send);
 	for(auto &i: sources) {
@@ -175,6 +199,9 @@ EffectSendConfiguration& EnvironmentNode::getEffectSend(int which) {
 	return effect_sends[which];
 }
 
+int EnvironmentNode::getEffectSendCount() {
+	return (int)effect_sends.size();
+}
 
 //begin public api
 
@@ -182,12 +209,7 @@ Lav_PUBLIC_FUNCTION LavError Lav_createEnvironmentNode(LavHandle simulationHandl
 	PUB_BEGIN
 	auto simulation = incomingObject<Simulation>(simulationHandle);
 	LOCK(*simulation);
-	auto hrtf = std::make_shared<HrtfData>();
-	if(std::string(hrtfPath) != "default") {
-		hrtf->loadFromFile(hrtfPath, simulation->getSr());
-	} else {
-		hrtf->loadFromDefault(simulation->getSr());
-	}
+	auto hrtf = createHrtfFromString(hrtfPath, simulation->getSr());
 	auto retval = createEnvironmentNode(simulation, hrtf);
 	*destination = outgoingObject<Node>(retval);
 	PUB_END
