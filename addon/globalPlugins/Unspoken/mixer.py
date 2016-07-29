@@ -13,7 +13,7 @@ class Mixer(object):
 		self.sim = sim
 		self.mix_ahead = mix_ahead
 		self.queue = Queue.Queue(mix_ahead+1)
-		self.player = nvwave.WavePlayer(channels = 2, samplesPerSec = 44100, bitsPerSample = 16, outputDevice=config.conf["speech"]["outputDevice"])
+		self.player = nvwave.WavePlayer(channels = 2, samplesPerSec = 44100, bitsPerSample = 16, outputDevice=config.conf["speech"]["outputDevice"], wantDucking = False)
 		self.feeding_thread = threading.Thread(target = self.feeder_func)
 		self.playing_thread = threading.Thread(target = self.player_func)
 		self.playing_thread.daemon = True
