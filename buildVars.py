@@ -34,7 +34,7 @@ import os.path
 # Define the python files that are the sources of your add-on.
 # You can use glob expressions here, they will be expanded.
 pythonSources = []
-#If you stanslate this, change this to not include wav files in the list of translated files.
+#If you translate this, change this to not include wav files in the list of translated files.
 for dirpath, dirnames, filenames in os.walk(os.path.join("addon", "globalPlugins")):
 		pythonSources.extend([os.path.join(dirpath, fi) for fi in filenames if fi.endswith(".py") or fi.endswith(".wav")])
 
