@@ -11,19 +11,21 @@ addon_info = {
 	# for previously unpublished addons, please follow the community guidelines at:
 	# https://bitbucket.org/nvdaaddonteam/todo/src/56140dbec531e4d7591338e1dbc6192f3dd422a8/guideLines.txt
 	# add-on Name, internal for nvda
-	"addon-name" : "Unspoken",
+	"addon_name" : "Unspoken",
 	# Add-on summary, usually the user visible name of the addon.
 	# TRANSLATORS: Summary for this add-on to be shown on installation and add-on information.
-	"addon-summary" : _("Unspoken 3D Audio"),
+	"addon_summary" : _("Unspoken 3D Audio"),
 	# Add-on description
 	# Translators: Long description to be shown for this add-on on add-on information from add-ons manager
-	"addon-description" : _("""Adds 3D audio for controls and replaces control messages."""),
+	"addon_description" : _("""Adds 3D audio for controls and replaces control messages."""),
 	# version
-	"addon-version" : "0.3.1",
+	"addon_version" : "0.3.1",
 	# Author(s)
-	"addon-author" : "Camlorn <camlorn38@gmail.com>, Bryan Smart< Bryansmart@bryansmart.com>",
+	"addon_author" : "Camlorn <camlorn38@gmail.com>, Bryan Smart< Bryansmart@bryansmart.com>",
 	# URL for the add-on documentation support
-	"addon-url" : "http://camlorn.net/pages/unspoken.html"
+	"addon_url" : "http://camlorn.net/pages/unspoken.html",
+	# Documentation file name
+	"addon_docFileName" : "readme.html",
 }
 
 
@@ -31,10 +33,10 @@ import os.path
 
 # Define the python files that are the sources of your add-on.
 # You can use glob expressions here, they will be expanded.
-pythonSources = [
-"addon/globalPlugins/unspoken/*.py",
-"addon/globalPlugins/unspoken/camlorn_audio/*.py",
-"addon/globalPlugins/unspoken/nvdaaddonupdater/*.py"]
+pythonSources = []
+#If you stanslate this, change this to not include wav files in the list of translated files.
+for dirpath, dirnames, filenames in os.walk(os.path.join("addon", "globalPlugins")):
+		pythonSources.extend([os.path.join(dirpath, fi) for fi in filenames if fi.endswith(".py") or fi.endswith(".wav")])
 
 # Files that contain strings for translation. Usually your python sources
 i18nSources = pythonSources + ["buildVars.py", "docHandler.py"]
