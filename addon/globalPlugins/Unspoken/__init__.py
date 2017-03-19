@@ -120,9 +120,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _hook_getSpeechTextForProperties(self, reason=NVDAObjects.controlTypes.REASON_QUERY, *args, **kwargs):
 		role = kwargs.get('role', None)
 		if role:
-			if 'role' in kwargs and role in sounds:
-				#NVDA will not announce roles if we put it in as _role, don't ask why.
-				kwargs['_role'] = kwargs['role']
+			#We specifically don't delete tree view items or list items, because that breaks level announcing, and they usually aren't spoken by their name anyway.
+			if ('role' in kwargs and role in sounds and
+				role not in {controlTypes.ROLE_TREEVIEWITEM, controlTypes.ROLE_LISTITEM}):
 				del kwargs['role']
 		return self._NVDA_getSpeechTextForProperties(reason, *args, **kwargs)
 
