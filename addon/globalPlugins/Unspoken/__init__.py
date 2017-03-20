@@ -4,12 +4,14 @@
 import os
 import os.path
 import sys
+import time
 import globalPluginHandler
 import NVDAObjects
 import config
 import speech
 import controlTypes
-import time
+import sayAllHandler
+import addonGui
 
 sys.path.append(os.path.join(os.path.dirname(__file__),'deps'))
 
@@ -89,6 +91,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def __init__(self, *args, **kwargs):
 		super(GlobalPlugin, self).__init__(*args, **kwargs)
+		addonGui.initialize()
+		config.conf.spec["unspoken"]={
+			"sayAll" : "boolean(default=False)"
+		}
 		self.simulation = libaudioverse.Simulation(block_size = 1024)
 		self.make_sound_objects()
 		self.hrtf_panner = libaudioverse.HrtfNode(self.simulation, "default")
@@ -117,14 +123,23 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			libaudioverse_object.buffer = buffer
 			sounds[key] = libaudioverse_object
 
+	def shouldNukeRoleSpeech(self):
+		if config.conf["unspoken"]["sayAll"]:
+			return not sayAllHandler.isRunning()
+		return True
+
 	def _hook_getSpeechTextForProperties(self, reason=NVDAObjects.controlTypes.REASON_QUERY, *args, **kwargs):
 		role = kwargs.get('role', None)
 		if role:
-			if 'role' in kwargs and role in sounds:
-				#NVDA will not announce roles if we put it in as _role, don't ask why.
+			if (role in sounds and self.shouldNukeRoleSpeech()):
+				#NVDA will not announce roles if we put it in as _role.
+				print "bah"
 				kwargs['_role'] = kwargs['role']
 				del kwargs['role']
 		return self._NVDA_getSpeechTextForProperties(reason, *args, **kwargs)
+
+	def terminate(self):
+		addonGui.terminate()
 
 	def _compute_volume(self):
 		driver=speech.getSynth()
