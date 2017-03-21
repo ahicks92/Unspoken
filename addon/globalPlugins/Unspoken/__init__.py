@@ -137,7 +137,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if role:
 			if (role in sounds and self.shouldNukeRoleSpeech()):
 				#NVDA will not announce roles if we put it in as _role.
-				print "bah"
 				kwargs['_role'] = kwargs['role']
 				del kwargs['role']
 		return self._NVDA_getSpeechTextForProperties(reason, *args, **kwargs)
