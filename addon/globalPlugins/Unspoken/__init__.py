@@ -93,7 +93,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		super(GlobalPlugin, self).__init__(*args, **kwargs)
 		addonGui.initialize()
 		config.conf.spec["unspoken"]={
-			"sayAll" : "boolean(default=False)"
+			"sayAll" : "boolean(default=False)",
+			"speakRoles" : "boolean(default=False)",
+			"noSounds" : "boolean(default=False)",
 		}
 		self.simulation = libaudioverse.Simulation(block_size = 1024)
 		self.make_sound_objects()
@@ -124,8 +126,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			sounds[key] = libaudioverse_object
 
 	def shouldNukeRoleSpeech(self):
-		if config.conf["unspoken"]["sayAll"]:
-			return not sayAllHandler.isRunning()
+		if config.conf["unspoken"]["sayAll"] and sayAllHandler.isRunning():
+			return False
+		if config.conf["unspoken"]["speakRoles"]:
+			return False
 		return True
 
 	def _hook_getSpeechTextForProperties(self, reason=NVDAObjects.controlTypes.REASON_QUERY, *args, **kwargs):
@@ -148,6 +152,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		return volume
 
 	def play_object(self, obj):
+		if config.conf["unspoken"]["noSounds"]:
+			return
 		curtime = time.time()
 		if curtime-self._last_played_time < 0.1 and obj is self._last_played_object:
 			return

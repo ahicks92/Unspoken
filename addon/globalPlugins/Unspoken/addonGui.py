@@ -28,10 +28,16 @@ class SettingsDialog(gui.SettingsDialog):
 		settingsSizer = BoxSizerHelper(self, sizer=settingsSizer)
 		self.sayAllCheckBox = settingsSizer.addItem(wx.CheckBox(self, label="&Disable in sayall?"))
 		self.sayAllCheckBox.SetValue(config.conf["unspoken"]["sayAll"])
+		self.speakRolesCheckBox = settingsSizer.addItem(wx.CheckBox(self, label="&Speak object roles"))
+		self.speakRolesCheckBox.SetValue(config.conf["unspoken"]["speakRoles"])
+		self.noSoundsCheckBox = settingsSizer.addItem(wx.CheckBox(self, label="&Don't Play sounds for roles"))
+		self.noSoundsCheckBox.SetValue(config.conf["unspoken"]["noSounds"])
 
 	def postInit(self):
 		self.sayAllCheckBox.SetFocus()
 
 	def onOk(self, evt):
 		config.conf["unspoken"]["sayAll"] = self.sayAllCheckBox.IsChecked()
+		config.conf["unspoken"]["speakRoles"] = self.speakRolesCheckBox.IsChecked()
+		config.conf["unspoken"]["noSounds"] = self.noSoundsCheckBox.IsChecked()
 		super(SettingsDialog, self).onOk(evt)
