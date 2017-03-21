@@ -26,12 +26,15 @@ class SettingsDialog(gui.SettingsDialog):
 
 	def makeSettings(self, settingsSizer):
 		settingsSizer = BoxSizerHelper(self, sizer=settingsSizer)
-		self.sayAllCheckBox = settingsSizer.addItem(wx.CheckBox(self, label="&Disable in sayall?"))
+		self.sayAllCheckBox = settingsSizer.addItem(wx.CheckBox(self, label="&Disable in sayall"))
 		self.sayAllCheckBox.SetValue(config.conf["unspoken"]["sayAll"])
+		self.volumeCheckBox = settingsSizer.addItem(wx.CheckBox(self, label="Automatically adjust sounds with speech &volume"))
+		self.volumeCheckBox.SetValue(config.conf["unspoken"]["volumeAdjust"])
 
 	def postInit(self):
 		self.sayAllCheckBox.SetFocus()
 
 	def onOk(self, evt):
 		config.conf["unspoken"]["sayAll"] = self.sayAllCheckBox.IsChecked()
+		config.conf["unspoken"]["volumeAdjust"] = self.volumeCheckBox.IsChecked()
 		super(SettingsDialog, self).onOk(evt)
