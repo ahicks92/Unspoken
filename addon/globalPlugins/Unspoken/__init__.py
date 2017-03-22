@@ -96,6 +96,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			"sayAll" : "boolean(default=False)",
 			"speakRoles" : "boolean(default=False)",
 			"noSounds" : "boolean(default=False)",
+			"volumeAdjust" : "boolean(default=True)",
 		}
 		self.simulation = libaudioverse.Simulation(block_size = 1024)
 		self.make_sound_objects()
@@ -145,9 +146,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		addonGui.terminate()
 
 	def _compute_volume(self):
+		if not config.conf["unspoken"]["volumeAdjust"]:
+			return 1.0
 		driver=speech.getSynth()
 		volume = getattr(driver, 'volume', 100)/100.0 #nvda reports as percent.
 		volume=clamp(volume, 0.0, 1.0)
+		print volume
 		return volume
 
 	def play_object(self, obj):
