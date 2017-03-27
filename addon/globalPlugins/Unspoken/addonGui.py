@@ -26,7 +26,7 @@ class SettingsDialog(gui.SettingsDialog):
 
 	def makeSettings(self, settingsSizer):
 		settingsSizer = BoxSizerHelper(self, sizer=settingsSizer)
-		self.sayAllCheckBox = settingsSizer.addItem(wx.CheckBox(self, label="&Disable in sayall"))
+		self.sayAllCheckBox = settingsSizer.addItem(wx.CheckBox(self, label="&Disable in say all"))
 		self.sayAllCheckBox.SetValue(config.conf["unspoken"]["sayAll"])
 		self.speakRolesCheckBox = settingsSizer.addItem(wx.CheckBox(self, label="&Speak object roles"))
 		self.speakRolesCheckBox.SetValue(config.conf["unspoken"]["speakRoles"])
